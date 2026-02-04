@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "SakeScan",
+    "slug": "sakescan",
+    "scheme": "vibecode",
+    "version": "2.0.2",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.sakescan",
+      "buildNumber": "3",
+      "infoPlist": {
+        "NSCameraUsageDescription": "SakeScan uses the camera to capture photos inside the app before you publish them.",
+        "NSMicrophoneUsageDescription": "SakeScan uses the microphone to record audio clips that stay with your in-app creations.",
+        "NSPhotoLibraryUsageDescription": "SakeScan accesses your photo library to let you choose media that appears in the app.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "edgeToEdgeEnabled": true
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "icon": "./icon.png",
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "7d2ac52c-8667-420b-beb1-3e6a6c0a5704"
+      }
+    }
+  }
+}
