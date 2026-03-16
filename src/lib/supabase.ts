@@ -14,6 +14,41 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   },
 });
 
+// Helper to ensure user exists in public.users table (for when DB trigger isn't set up)
+export const ensureUserExists = async (userId: string, email?: string) => {
+  try {
+    const { data: existingUser, error: checkError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (checkError) {
+      console.error('[ensureUserExists] Error checking user:', checkError);
+    }
+
+    if (!existingUser) {
+      const { error: insertError } = await supabase
+        .from('users')
+        .insert({
+          id: userId,
+          email: email ?? null,
+          display_name: email ? email.split('@')[0] : 'User',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        } as Record<string, unknown>);
+
+      if (insertError) {
+        console.error('[ensureUserExists] Failed to create user:', insertError);
+        throw insertError;
+      }
+    }
+  } catch (error) {
+    console.error('[ensureUserExists] Unexpected error:', error);
+    throw error;
+  }
+};
+
 // Helper to get current user
 export const getCurrentUser = async () => {
   const { data: { user } } = await supabase.auth.getUser();

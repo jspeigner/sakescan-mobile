@@ -1,10 +1,12 @@
 import React from 'react';
 import { Pressable } from 'react-native';
 import { Tabs, router } from 'expo-router';
-import { Compass, Home, Heart, Camera, User, Building2 } from 'lucide-react-native';
+import { Compass, Home, Heart, Camera, Building2 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import { useTheme } from '@/lib/theme-context';
 
 function CameraTabButton() {
+  const { colors } = useTheme();
   const handlePress = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     router.push('/camera');
@@ -17,11 +19,11 @@ function CameraTabButton() {
         width: 56,
         height: 56,
         borderRadius: 28,
-        backgroundColor: '#C9A227',
+        backgroundColor: colors.primary,
         alignItems: 'center',
         justifyContent: 'center',
         marginTop: -20,
-        shadowColor: '#C9A227',
+        shadowColor: colors.primary,
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,
         shadowRadius: 8,
@@ -34,18 +36,20 @@ function CameraTabButton() {
 }
 
 export default function TabLayout() {
+  const { colors } = useTheme();
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#C9A227',
-        tabBarInactiveTintColor: '#999',
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textTertiary,
         tabBarStyle: {
-          backgroundColor: '#FAFAF8',
-          borderTopColor: '#E8E4D9',
+          backgroundColor: colors.background,
+          borderTopColor: colors.border,
           borderTopWidth: 1,
           paddingTop: 8,
           height: 85,
         },
+        tabBarItemStyle: { alignItems: 'center', justifyContent: 'center' },
         tabBarLabelStyle: {
           fontSize: 9,
           fontWeight: '600',

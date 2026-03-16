@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import Svg, { Path, Circle, Rect, Defs, Pattern, G } from 'react-native-svg';
 import { useAuth } from '@/lib/auth-context';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 // Japanese Seigaiha wave pattern component
 function WavePattern() {
@@ -100,9 +100,16 @@ function GoogleLogo({ size = 20 }: { size?: number }) {
 
 export default function WelcomeScreen() {
   const insets = useSafeAreaInsets();
-  const { continueAsGuest, signInWithApple, signInWithGoogle, isLoading } = useAuth();
+  const { user, continueAsGuest, signInWithApple, signInWithGoogle, isLoading } = useAuth();
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isSigningInGoogle, setIsSigningInGoogle] = useState(false);
+
+  // Watch for successful authentication and navigate to tabs
+  useEffect(() => {
+    if (user) {
+      router.replace('/(tabs)');
+    }
+  }, [user]);
 
   const handleGetStarted = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -121,8 +128,8 @@ export default function WelcomeScreen() {
     
     try {
       await signInWithApple();
-      // Auth state change will be detected automatically
-      router.replace('/(tabs)');
+      // Navigation happens automatically via auth state listener in index.tsx
+      // Don't navigate here - let the auth state change trigger navigation
     } catch (error: unknown) {
       // Don't show error for user cancellation
       if (error && typeof error === 'object' && 'code' in error && error.code === 'ERR_REQUEST_CANCELED') {
@@ -141,8 +148,8 @@ export default function WelcomeScreen() {
     
     try {
       await signInWithGoogle();
-      // Auth state change will be detected automatically
-      router.replace('/(tabs)');
+      // Navigation happens automatically via auth state listener in index.tsx
+      // Don't navigate here - let the auth state change trigger navigation
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Sign in failed. Please try again.';
       Alert.alert('Sign In Failed', message);

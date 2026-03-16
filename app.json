@@ -10,19 +10,25 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.sakescan",
-      "buildNumber": "3",
+      "buildNumber": "7",
       "infoPlist": {
         "NSCameraUsageDescription": "SakeScan uses the camera to capture photos inside the app before you publish them.",
         "NSMicrophoneUsageDescription": "SakeScan uses the microphone to record audio clips that stay with your in-app creations.",
         "NSPhotoLibraryUsageDescription": "SakeScan accesses your photo library to let you choose media that appears in the app.",
+        "NSLocationWhenInUseUsageDescription": "SakeScan uses your location to show nearby stores that carry sake.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ]
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "expo-apple-authentication"
     ],
     "experiments": {
       "typedRoutes": true

@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
-import { supabase } from './supabase';
+import { supabase, ensureUserExists } from './supabase';
 import type { Session, User } from '@supabase/supabase-js';
 
 // Required for Google Auth to work on web
@@ -17,6 +17,9 @@ interface AuthContextType {
   signUpWithEmail: (email: string, password: string) => Promise<{ user: User | null; session: Session | null; }>;
   signInWithApple: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
+  updatePassword: (newPassword: string) => Promise<void>;
+  refreshUser: () => Promise<void>;
   signOut: () => Promise<void>;
   continueAsGuest: () => void;
   isGuest: boolean;
@@ -31,33 +34,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isGuest, setIsGuest] = useState(false);
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setIsLoading(false);
-    });
+    let isMounted = true;
+    
+    // Get initial session with error handling and timeout
+    const initAuth = async () => {
+      try {
+        // Add timeout to prevent hanging
+        const timeoutPromise = new Promise<null>((_, reject) => 
+          setTimeout(() => reject(new Error('Auth timeout')), 5000)
+        );
+        
+        const sessionPromise = supabase.auth.getSession();
+        
+        const result = await Promise.race([sessionPromise, timeoutPromise]);
+        
+        if (isMounted && result && 'data' in result) {
+          setSession(result.data.session);
+          setUser(result.data.session?.user ?? null);
+        }
+      } catch (error) {
+        console.log('[Auth] Initial session check failed:', error);
+        // Continue without session - user can still use app as guest
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    initAuth();
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setIsGuest(false);
+      if (isMounted) {
+        setSession(session);
+        setUser(session?.user ?? null);
+        setIsGuest(false);
+      }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signInWithEmail = async (email: string, password: string) => {
     setIsLoading(true);
     try {
-      console.log('[Auth] Signing in with email:', email);
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      console.log('[Auth] Sign in result:', { user: !!data.user, session: !!data.session, error: error?.message });
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
+      if (data.user) {
+        try {
+          await ensureUserExists(data.user.id, email);
+        } catch (userError) {
+          console.error('[Auth] Failed to ensure user exists:', userError);
+        }
+      }
     } finally {
       setIsLoading(false);
     }
@@ -66,17 +99,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUpWithEmail = async (email: string, password: string) => {
     setIsLoading(true);
     try {
-      console.log('[Auth] Signing up with email:', email);
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-      });
-      console.log('[Auth] Sign up result:', { user: !!data.user, session: !!data.session, error: error?.message });
+      const { data, error } = await supabase.auth.signUp({ email, password });
       if (error) throw error;
-      return data; // Return the data so caller can check session
+      if (data.user) {
+        try {
+          await ensureUserExists(data.user.id, email);
+        } catch (userError) {
+          console.error('[Auth] Failed to ensure user exists:', userError);
+        }
+      }
+      return data;
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const resetPassword = async (email: string) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: 'https://sakescan.com/auth/callback',
+    });
+    if (error) throw error;
+  };
+
+  const updatePassword = async (newPassword: string) => {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+  };
+
+  const refreshUser = async () => {
+    const { data, error } = await supabase.auth.getUser();
+    if (error) throw error;
+    if (data.user) setUser(data.user);
   };
 
   const signInWithApple = async () => {
@@ -233,6 +286,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signUpWithEmail,
         signInWithApple,
         signInWithGoogle,
+        resetPassword,
+        updatePassword,
+        refreshUser,
         signOut,
         continueAsGuest,
         isGuest,

@@ -1,18 +1,38 @@
 import { useState } from 'react';
-import { Text, View, ScrollView, Pressable, Image, Alert, Modal, TextInput, ActivityIndicator, Switch, Linking } from 'react-native';
+import {
+  Text,
+  View,
+  ScrollView,
+  Pressable,
+  Image,
+  Alert,
+  Modal,
+  TextInput,
+  ActivityIndicator,
+  Switch,
+  Linking,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
 import { User, LogOut, Trash2, ChevronRight, Star, Camera, BookOpen, X, CheckCircle, AlertCircle, Clock, Bell, Moon, Mail, Edit3, Shield } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
+import { decode } from 'base64-arraybuffer';
 import { useAuth } from '@/lib/auth-context';
+import { useTheme } from '@/lib/theme-context';
+import { useNotifications } from '@/lib/notification-context';
 import { supabase } from '@/lib/supabase';
-import { useUserScans, useUserRatings, useUpdateUserProfile } from '@/lib/supabase-hooks';
+import { useUserScans, useUserRatings, useUpdateUserProfile, useUserProfile } from '@/lib/supabase-hooks';
 import type { ScanWithSake } from '@/lib/database.types';
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
-  const { user, isGuest, signOut } = useAuth();
+  const { user, isGuest, signOut, refreshUser } = useAuth();
+  const { themeMode, setThemeMode, colors } = useTheme();
+  const { notificationsEnabled, setNotificationsEnabled } = useNotifications();
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
@@ -21,24 +41,23 @@ export default function ProfileScreen() {
   // Edit profile state
   const [editDisplayName, setEditDisplayName] = useState('');
   const [editAvatarUrl, setEditAvatarUrl] = useState('');
+  const [localAvatarUri, setLocalAvatarUri] = useState<string | null>(null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
-
-  // Settings state
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [darkModeEnabled, setDarkModeEnabled] = useState(false);
 
   // Fetch user stats from Supabase
   const { data: scans } = useUserScans(user?.id);
   const { data: ratings } = useUserRatings(user?.id);
+  const { data: userProfile } = useUserProfile(user?.id);
   const updateProfile = useUpdateUserProfile();
 
   const scannedCount = scans?.length ?? 0;
   const reviewedCount = ratings?.length ?? 0;
   const unmatchedCount = scans?.filter(s => !s.matched).length ?? 0;
 
-  const userDisplayName = user?.user_metadata?.display_name ?? user?.email?.split('@')[0] ?? 'Guest User';
+  const userDisplayName = userProfile?.display_name ?? user?.user_metadata?.display_name ?? user?.email?.split('@')[0] ?? 'Guest User';
   const userEmail = user?.email ?? 'No email';
-  const userAvatar = user?.user_metadata?.avatar_url ?? 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&crop=face';
+  // B06: Use avatar from public.users (trigger no longer auto-assigns); show placeholder when null
+  const userAvatar = userProfile?.avatar_url ?? null;
 
   const handleScanPress = async (scan: ScanWithSake) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -54,8 +73,21 @@ export default function ProfileScreen() {
 
   const handleLogout = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    await signOut();
-    router.replace('/welcome');
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            await signOut();
+            router.replace('/welcome');
+          },
+        },
+      ]
+    );
   };
 
   const handleDeleteAccount = async () => {
@@ -91,7 +123,8 @@ export default function ProfileScreen() {
 
   const openEditProfile = () => {
     setEditDisplayName(userDisplayName);
-    setEditAvatarUrl(userAvatar);
+    setEditAvatarUrl(userAvatar ?? '');
+    setLocalAvatarUri(null);
     setShowEditProfileModal(true);
   };
 
@@ -113,26 +146,28 @@ export default function ProfileScreen() {
 
     if (!result.canceled && result.assets[0]) {
       setIsUploadingAvatar(true);
+      const asset = result.assets[0];
+      setLocalAvatarUri(asset.uri);
       try {
-        const asset = result.assets[0];
         const fileName = `avatar-${user?.id}-${Date.now()}.jpg`;
 
-        // Upload to Supabase Storage
-        const response = await fetch(asset.uri);
-        const blob = await response.blob();
+        const base64Data = await FileSystem.readAsStringAsync(asset.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
 
         const { data, error } = await supabase.storage
           .from('avatars')
-          .upload(fileName, blob, { contentType: 'image/jpeg', upsert: true });
+          .upload(fileName, decode(base64Data), { contentType: 'image/jpeg', upsert: true });
 
-        if (error) throw error;
-
-        // Get public URL
-        const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(fileName);
-        setEditAvatarUrl(urlData.publicUrl);
+        if (error) {
+          setEditAvatarUrl(asset.uri);
+        } else {
+          const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(data.path);
+          setEditAvatarUrl(urlData.publicUrl);
+        }
       } catch (err) {
         console.error('Error uploading avatar:', err);
-        Alert.alert('Error', 'Failed to upload image. Please try again.');
+        setEditAvatarUrl(asset.uri);
       } finally {
         setIsUploadingAvatar(false);
       }
@@ -145,7 +180,6 @@ export default function ProfileScreen() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
-      // Update user metadata in Supabase Auth
       const { error } = await supabase.auth.updateUser({
         data: {
           display_name: editDisplayName.trim(),
@@ -155,7 +189,6 @@ export default function ProfileScreen() {
 
       if (error) throw error;
 
-      // Also update in users table if it exists
       await updateProfile.mutateAsync({
         userId: user.id,
         displayName: editDisplayName.trim(),
@@ -163,6 +196,8 @@ export default function ProfileScreen() {
       });
 
       setShowEditProfileModal(false);
+      setLocalAvatarUri(null);
+      await refreshUser();
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err) {
       console.error('Error updating profile:', err);
@@ -172,18 +207,18 @@ export default function ProfileScreen() {
 
   const handleToggleNotifications = async (value: boolean) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setNotificationsEnabled(value);
-    // TODO: Persist to AsyncStorage or user settings
+    await setNotificationsEnabled(value);
   };
 
   const handleToggleDarkMode = async (value: boolean) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setDarkModeEnabled(value);
-    // TODO: Implement theme switching
+    await setThemeMode(value ? 'dark' : 'light');
   };
 
+  const isDarkMode = themeMode === 'dark';
+
   return (
-    <View className="flex-1 bg-[#FAFAF8]" style={{ paddingTop: insets.top }}>
+    <View className="flex-1" style={{ backgroundColor: colors.background, paddingTop: insets.top }}>
       <ScrollView
         className="flex-1"
         showsVerticalScrollIndicator={false}
@@ -191,7 +226,7 @@ export default function ProfileScreen() {
       >
         {/* Header */}
         <View className="px-5 py-4">
-          <Text style={{ fontFamily: 'serif', fontSize: 28, fontWeight: '600', color: '#1a1a1a' }}>
+          <Text style={{ fontFamily: 'serif', fontSize: 28, fontWeight: '600', color: colors.text }}>
             Profile
           </Text>
         </View>
@@ -200,17 +235,21 @@ export default function ProfileScreen() {
         <View className="mx-5 mb-6">
           <View
             className="p-5 rounded-2xl"
-            style={{ backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#F0EDE5' }}
+            style={{ backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}
           >
             <View className="flex-row items-center">
               <Pressable onPress={!isGuest ? openEditProfile : undefined}>
                 <View
                   className="w-20 h-20 rounded-full overflow-hidden"
-                  style={{ backgroundColor: '#F5EED9' }}
+                  style={{ backgroundColor: colors.primaryLight }}
                 >
                   {isGuest ? (
                     <View className="flex-1 items-center justify-center">
-                      <User size={40} color="#C9A227" />
+                      <User size={40} color={colors.primary} />
+                    </View>
+                  ) : !userAvatar ? (
+                    <View className="flex-1 items-center justify-center w-full h-full">
+                      <User size={40} color={colors.primary} />
                     </View>
                   ) : (
                     <Image
@@ -443,9 +482,9 @@ export default function ProfileScreen() {
                 </Text>
               </View>
               <Switch
-                value={darkModeEnabled}
+                value={isDarkMode}
                 onValueChange={handleToggleDarkMode}
-                trackColor={{ false: '#E5E5E5', true: '#C9A227' }}
+                trackColor={{ false: '#E5E5E5', true: colors.primary }}
                 thumbColor="#FFFFFF"
               />
             </View>
@@ -577,7 +616,7 @@ export default function ProfileScreen() {
         </View>
       </ScrollView>
 
-      {/* Edit Profile Modal */}
+      {/* Edit Profile Modal - B09: KeyboardAvoidingView for keyboard overlap */}
       <Modal
         visible={showEditProfileModal}
         transparent
@@ -585,83 +624,102 @@ export default function ProfileScreen() {
         onRequestClose={() => setShowEditProfileModal(false)}
       >
         <View className="flex-1 bg-black/50 justify-end">
-          <View
-            className="rounded-t-3xl"
-            style={{ backgroundColor: '#FAFAF8', paddingBottom: insets.bottom + 20 }}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ width: '100%' }}
           >
-            {/* Modal Header */}
-            <View className="flex-row items-center justify-between px-5 py-4 border-b border-[#F0EDE5]">
-              <Pressable onPress={() => setShowEditProfileModal(false)}>
-                <Text className="text-[#8B8B8B] text-base">Cancel</Text>
-              </Pressable>
-              <Text className="text-lg font-bold text-[#1a1a1a]">Edit Profile</Text>
-              <Pressable onPress={handleSaveProfile} disabled={updateProfile.isPending}>
-                {updateProfile.isPending ? (
-                  <ActivityIndicator size="small" color="#C9A227" />
-                ) : (
-                  <Text className="text-[#C9A227] text-base font-semibold">Save</Text>
-                )}
-              </Pressable>
-            </View>
-
-            {/* Avatar Edit */}
-            <View className="items-center py-6">
-              <Pressable onPress={handlePickImage} disabled={isUploadingAvatar}>
-                <View
-                  className="w-24 h-24 rounded-full overflow-hidden"
-                  style={{ backgroundColor: '#F5EED9' }}
-                >
-                  {isUploadingAvatar ? (
-                    <View className="flex-1 items-center justify-center">
-                      <ActivityIndicator size="large" color="#C9A227" />
-                    </View>
+            <View
+              className="rounded-t-3xl"
+              style={{ backgroundColor: colors.background, paddingBottom: insets.bottom + 20 }}
+            >
+              {/* Modal Header */}
+              <View
+                className="flex-row items-center justify-between px-5 py-4"
+                style={{ borderBottomWidth: 1, borderBottomColor: colors.border }}
+              >
+                <Pressable onPress={() => setShowEditProfileModal(false)}>
+                  <Text className="text-base" style={{ color: colors.textSecondary }}>Cancel</Text>
+                </Pressable>
+                <Text className="text-lg font-bold" style={{ color: colors.text }}>Edit Profile</Text>
+                <Pressable onPress={handleSaveProfile} disabled={updateProfile.isPending}>
+                  {updateProfile.isPending ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
                   ) : (
-                    <Image
-                      source={{ uri: editAvatarUrl }}
-                      className="w-full h-full"
-                      resizeMode="cover"
-                    />
+                    <Text className="text-base font-semibold" style={{ color: colors.primary }}>Save</Text>
                   )}
+                </Pressable>
+              </View>
+
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                {/* Avatar Edit */}
+                <View className="items-center py-6">
+                  <Pressable onPress={handlePickImage} disabled={isUploadingAvatar}>
+                    <View style={{ position: 'relative' }}>
+                      <View
+                        className="w-24 h-24 rounded-full overflow-hidden"
+                        style={{ backgroundColor: colors.primaryLight }}
+                      >
+                        {isUploadingAvatar ? (
+                          <View className="flex-1 items-center justify-center w-full h-full">
+                            <ActivityIndicator size="large" color={colors.primary} />
+                          </View>
+                        ) : (localAvatarUri || editAvatarUrl) ? (
+                          <Image
+                            source={{ uri: localAvatarUri ?? editAvatarUrl }}
+                            className="w-full h-full"
+                            resizeMode="cover"
+                          />
+                        ) : (
+                          <View className="flex-1 items-center justify-center w-full h-full">
+                            <User size={40} color={colors.primary} />
+                          </View>
+                        )}
+                      </View>
+                      <View
+                        className="absolute bottom-0 right-0 w-8 h-8 rounded-full items-center justify-center"
+                        style={{ backgroundColor: colors.primary, borderWidth: 3, borderColor: colors.background }}
+                      >
+                        <Camera size={16} color="#FFFFFF" />
+                      </View>
+                    </View>
+                  </Pressable>
+                  <Text className="text-sm mt-3" style={{ color: colors.textSecondary }}>Tap to change photo</Text>
                 </View>
-                <View
-                  className="absolute bottom-0 right-0 w-8 h-8 rounded-full items-center justify-center"
-                  style={{ backgroundColor: '#C9A227', borderWidth: 3, borderColor: '#FAFAF8' }}
-                >
-                  <Camera size={16} color="#FFFFFF" />
-                </View>
-              </Pressable>
-              <Text className="text-[#8B8B8B] text-sm mt-3">Tap to change photo</Text>
-            </View>
 
             {/* Form Fields */}
             <View className="px-5">
-              <Text className="text-sm font-semibold text-[#8B8B8B] mb-2">DISPLAY NAME</Text>
+              <Text className="text-sm font-semibold mb-2 tracking-wider" style={{ color: colors.textSecondary }}>DISPLAY NAME</Text>
               <TextInput
                 value={editDisplayName}
                 onChangeText={setEditDisplayName}
                 placeholder="Enter your name"
-                placeholderTextColor="#B5B5B5"
+                placeholderTextColor={colors.textTertiary}
                 className="rounded-xl px-4 py-4 text-base mb-4"
                 style={{
-                  backgroundColor: '#FFFFFF',
+                  backgroundColor: colors.surface,
                   borderWidth: 1,
-                  borderColor: '#F0EDE5',
-                  color: '#1a1a1a',
+                  borderColor: colors.border,
+                  color: colors.text,
                 }}
               />
 
-              <Text className="text-sm font-semibold text-[#8B8B8B] mb-2">EMAIL</Text>
+              <Text className="text-sm font-semibold mb-2 tracking-wider" style={{ color: colors.textSecondary }}>EMAIL</Text>
               <View
                 className="rounded-xl px-4 py-4 mb-4"
-                style={{ backgroundColor: '#F5F5F5', borderWidth: 1, borderColor: '#F0EDE5' }}
+                style={{ backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border }}
               >
-                <Text className="text-[#8B8B8B] text-base">{userEmail}</Text>
+                <Text className="text-base" style={{ color: colors.textSecondary }}>{userEmail}</Text>
               </View>
-              <Text className="text-xs text-[#B5B5B5] -mt-2 mb-4">
+              <Text className="text-xs -mt-2 mb-4" style={{ color: colors.textTertiary }}>
                 Email cannot be changed
               </Text>
             </View>
-          </View>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 

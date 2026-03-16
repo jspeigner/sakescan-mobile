@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Text, View, Pressable, TextInput, Alert, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,7 +8,14 @@ import { useAuth } from '@/lib/auth-context';
 
 export default function AuthScreen() {
   const insets = useSafeAreaInsets();
-  const { signInWithEmail, signUpWithEmail } = useAuth();
+  const { user, signInWithEmail, signUpWithEmail, resetPassword } = useAuth();
+  
+  // Watch for successful authentication and navigate to tabs
+  useEffect(() => {
+    if (user) {
+      router.replace('/(tabs)');
+    }
+  }, [user]);
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -40,27 +47,22 @@ export default function AuthScreen() {
         // Check if email confirmation is required
         const session = result?.session;
         if (!session) {
-          // Email confirmation required - show instructions
           Alert.alert(
-            '⚠️ Email Confirmation Required',
-            'Your Supabase project requires email confirmation. For testing purposes:\n\n1. Go to Supabase Dashboard → Authentication → Settings\n2. Disable "Enable email confirmations"\n3. Try signing up again\n\nAlternatively, check your email for the confirmation link.',
+            'Check Your Email',
+            'We sent a confirmation link to your email. Please check your inbox and confirm to sign in.',
             [{ text: 'OK' }]
           );
         } else {
           // Auto-signed in (email confirmation disabled)
+          // Navigation happens automatically via auth state listener
           Alert.alert(
             'Success!',
             'Account created successfully. You\'re now signed in!',
-            [{ text: 'OK', onPress: () => {
-              router.replace('/(tabs)');
-            }}]
+            [{ text: 'OK' }]
           );
         }
       } else {
         await signInWithEmail(email, password);
-        // Give the auth state a moment to update
-        await new Promise(resolve => setTimeout(resolve, 500));
-        router.replace('/(tabs)');
       }
     } catch (error: any) {
       console.error('Auth error:', error);
@@ -69,9 +71,18 @@ export default function AuthScreen() {
       let errorMessage = error?.message || 'Something went wrong. Please try again.';
 
       if (error?.message?.includes('Invalid login credentials')) {
-        errorMessage = 'Invalid email or password. If you just signed up, please check your email for a confirmation link first.';
+        errorMessage = 'Invalid email or password. Please try again.';
       } else if (error?.message?.includes('Email not confirmed')) {
         errorMessage = 'Please check your email and click the confirmation link before signing in.';
+      } else if (error?.message?.includes('User already registered') || error?.message?.includes('already exists')) {
+        setIsSignUp(false);
+        setConfirmPassword('');
+        Alert.alert(
+          'Account Already Exists',
+          'This email is already registered. Please sign in with your password.',
+          [{ text: 'OK' }]
+        );
+        return;
       }
 
       Alert.alert(
@@ -80,6 +91,24 @@ export default function AuthScreen() {
       );
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email) {
+      Alert.alert('Enter Your Email', 'Please enter your email address first, then tap Forgot Password.');
+      return;
+    }
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      await resetPassword(email);
+      Alert.alert(
+        'Check Your Email',
+        'If an account exists with that email, we sent a password reset link. Please check your inbox.',
+        [{ text: 'OK' }]
+      );
+    } catch (err: unknown) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to send reset email. Please try again.');
     }
   };
 
@@ -201,6 +230,13 @@ export default function AuthScreen() {
                 </Text>
               )}
             </Pressable>
+
+            {/* Forgot Password - only on sign in */}
+            {!isSignUp && (
+              <Pressable onPress={handleForgotPassword} className="mt-4 items-center">
+                <Text className="text-[#C9A227] text-sm font-medium">Forgot Password?</Text>
+              </Pressable>
+            )}
 
             {/* Toggle Sign Up / Sign In */}
             <Pressable

@@ -168,12 +168,16 @@ export default function CameraScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Camera - no children allowed */}
       <CameraView
         ref={cameraRef}
-        style={styles.camera}
+        style={StyleSheet.absoluteFill}
         facing={facing}
         enableTorch={flashOn}
-      >
+      />
+
+      {/* Overlay UI - positioned absolutely on top of camera */}
+      <View style={styles.overlay}>
         {/* Header */}
         <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
           <Pressable onPress={handleClose} style={styles.headerButton}>
@@ -249,7 +253,7 @@ export default function CameraScreen() {
             <Zap size={24} color="#FFFFFF" fill={flashOn ? '#FFFFFF' : 'transparent'} />
           </Pressable>
         </View>
-      </CameraView>
+      </View>
     </View>
   );
 }
@@ -258,6 +262,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    flex: 1,
   },
   permissionContainer: {
     alignItems: 'center',
@@ -287,9 +295,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
-  },
-  camera: {
-    flex: 1,
   },
   header: {
     flexDirection: 'row',

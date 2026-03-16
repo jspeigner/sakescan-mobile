@@ -15,7 +15,9 @@
     },
     "production": {
       "ios": {
-        "distribution": "store"
+        "distribution": "store",
+        "autoIncrement": "buildNumber",
+        "image": "latest"
       },
       "android": {
         "distribution": "store"
