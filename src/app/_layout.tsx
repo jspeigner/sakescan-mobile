@@ -3,7 +3,6 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useColorScheme } from '@/lib/useColorScheme';
 import {
   useFonts,
   NotoSerifJP_400Regular,
@@ -20,9 +19,8 @@ import {
 } from '@expo-google-fonts/zen-kaku-gothic-new';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
-import { ThemeProvider as CustomThemeProvider } from '@/lib/theme-context';
+import { ThemeProvider as CustomThemeProvider, useTheme } from '@/lib/theme-context';
 import { NotificationProvider } from '@/lib/notification-context';
 import { I18nProvider } from '@/lib/i18n-context';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -35,22 +33,7 @@ export const unstable_settings = {
   initialRouteName: 'index',
 };
 
-// Configure global error handlers in production
-if (!__DEV__) {
-  const errorHandler = (error: Error, isFatal?: boolean) => {
-    console.error('[GlobalErrorHandler] Error caught:', error, 'isFatal:', isFatal);
-  };
-  // @ts-expect-error ErrorUtils is available in React Native
-  if (global.ErrorUtils) {
-    // @ts-expect-error
-    global.ErrorUtils.setGlobalHandler(errorHandler);
-  }
-}
-
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync().catch((error) => {
-  console.error('[SplashScreen] Failed to prevent auto-hide:', error);
-});
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -68,9 +51,15 @@ const queryClient = new QueryClient({
 });
 
 function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null | undefined }) {
+  const { colors } = useTheme();
+
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
+      <Stack
+        screenOptions={{
+          contentStyle: { backgroundColor: colors.background },
+        }}
+      >
         <Stack.Screen
           name="index"
           options={{ headerShown: false, animation: 'none' }}
@@ -150,27 +139,28 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
   );
 }
 
-function AppContent({ colorScheme }: { colorScheme: 'light' | 'dark' | null | undefined }) {
+function AppContent() {
   const { isLoading } = useAuth();
+  const { isDarkMode } = useTheme();
 
   useEffect(() => {
     if (!isLoading) {
-      SplashScreen.hideAsync();
+      SplashScreen.hideAsync().catch(() => {});
     }
   }, [isLoading]);
 
+  const navigationScheme = isDarkMode ? 'dark' : 'light';
+
   return (
     <>
-      <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
-      <RootLayoutNav colorScheme={colorScheme} />
+      <StatusBar style={isDarkMode ? 'light' : 'dark'} />
+      <RootLayoutNav colorScheme={navigationScheme} />
     </>
   );
 }
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     NotoSerifJP_400Regular,
     NotoSerifJP_500Medium,
     NotoSerifJP_600SemiBold,
@@ -182,7 +172,12 @@ export default function RootLayout() {
     ZenKakuGothicNew_900Black,
   });
 
-  // Handle deep links for Supabase auth callbacks (e.g. password reset)
+  useEffect(() => {
+    if (fontError) {
+      console.error('[RootLayout] Font loading failed:', fontError);
+    }
+  }, [fontError]);
+
   useEffect(() => {
     const parsePairs = (str: string): Record<string, string> => {
       const result: Record<string, string> = {};
@@ -232,36 +227,40 @@ export default function RootLayout() {
     return () => subscription.remove();
   }, []);
 
+  if (!fontsLoaded && !fontError) {
+    return null;
+  }
+
   return (
-    <ErrorBoundary
-      fallback={
-        <View style={{ flex: 1, backgroundColor: '#FAFAF8', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-          <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#1a1a1a', textAlign: 'center' }}>
-            Unable to start SakeScan
-          </Text>
-          <Text style={{ fontSize: 16, color: '#6B6B6B', marginTop: 12, textAlign: 'center' }}>
-            Please restart the app. If the problem persists, try reinstalling.
-          </Text>
-        </View>
-      }
-    >
-      <QueryClientProvider client={queryClient}>
-        <ErrorBoundary>
-          <AuthProvider>
-            <I18nProvider>
-              <CustomThemeProvider>
-                <NotificationProvider>
-                  <GestureHandlerRootView style={{ flex: 1 }}>
-                    <KeyboardProvider>
-                      <AppContent colorScheme={colorScheme} />
-                    </KeyboardProvider>
-                  </GestureHandlerRootView>
-                </NotificationProvider>
-              </CustomThemeProvider>
-            </I18nProvider>
-          </AuthProvider>
-        </ErrorBoundary>
-      </QueryClientProvider>
-    </ErrorBoundary>
+    <View style={{ flex: 1 }}>
+      <ErrorBoundary
+        fallback={
+          <View style={{ flex: 1, backgroundColor: '#FAFAF8', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+            <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#1a1a1a', textAlign: 'center' }}>
+              Unable to start SakeScan
+            </Text>
+            <Text style={{ fontSize: 16, color: '#6B6B6B', marginTop: 12, textAlign: 'center' }}>
+              Please restart the app. If the problem persists, try reinstalling.
+            </Text>
+          </View>
+        }
+      >
+        <QueryClientProvider client={queryClient}>
+          <ErrorBoundary>
+            <AuthProvider>
+              <I18nProvider>
+                <CustomThemeProvider>
+                  <NotificationProvider>
+                    <GestureHandlerRootView style={{ flex: 1 }}>
+                      <AppContent />
+                    </GestureHandlerRootView>
+                  </NotificationProvider>
+                </CustomThemeProvider>
+              </I18nProvider>
+            </AuthProvider>
+          </ErrorBoundary>
+        </QueryClientProvider>
+      </ErrorBoundary>
+    </View>
   );
 }
