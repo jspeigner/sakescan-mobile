@@ -27,13 +27,16 @@ interface ScanResult {
 
 export async function scanSakeLabel(imageBase64: string): Promise<ScanResult> {
   try {
-    const apiKey = process.env.EXPO_PUBLIC_VIBECODE_OPENAI_API_KEY;
+    const apiKey =
+      process.env.EXPO_PUBLIC_OPENAI_API_KEY?.trim() ||
+      process.env.EXPO_PUBLIC_VIBECODE_OPENAI_API_KEY?.trim();
 
     if (!apiKey) {
       console.error('OpenAI API key not found in environment variables');
       return {
         success: false,
-        error: 'API key not configured. Please add EXPO_PUBLIC_VIBECODE_OPENAI_API_KEY to your .env file.'
+        error:
+          'API key not configured. Add EXPO_PUBLIC_OPENAI_API_KEY to your .env file (legacy: EXPO_PUBLIC_VIBECODE_OPENAI_API_KEY).',
       };
     }
 

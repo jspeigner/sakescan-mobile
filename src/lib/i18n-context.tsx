@@ -34,7 +34,7 @@ function getDeviceLocale(): Language {
   return 'en';
 }
 
-// English translations (abbreviated - full set in Vibecode)
+// English translations (primary locale; extend as needed)
 const en: Record<string, string> = {
   'common.home': 'Home',
   'common.explore': 'Explore',
@@ -78,7 +78,9 @@ const en: Record<string, string> = {
   'profile.preferences': 'PREFERENCES',
   'profile.notifications': 'Notifications',
   'profile.darkMode': 'Dark Mode',
+  'profile.darkModeHint': 'Switch to dark theme',
   'profile.language': 'Language',
+  'profile.languageHint': 'Choose app language',
   'profile.logOut': 'Log Out',
   'sake.details': 'Sake Details',
   'sake.writeReview': 'Write a Review',
@@ -101,6 +103,7 @@ const ja: Record<string, string> = {
   'common.profile': 'プロフィール',
   'welcome.title': '日本酒を発見',
   'profile.title': 'プロフィール',
+  'profile.languageHint': 'アプリの言語を選ぶ',
   'sake.details': '日本酒の詳細',
   'sake.writeReview': 'レビューを書く',
 };

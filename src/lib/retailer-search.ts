@@ -9,7 +9,8 @@ export interface RetailerInfo {
   specialization?: string;
 }
 
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || process.env.EXPO_PUBLIC_VIBECODE_BACKEND_URL;
+const BACKEND_URL =
+  process.env.EXPO_PUBLIC_BACKEND_URL?.trim() || process.env.EXPO_PUBLIC_VIBECODE_BACKEND_URL?.trim();
 
 /**
  * Search for retailers that sell a specific sake via backend API

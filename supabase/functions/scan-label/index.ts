@@ -18,8 +18,7 @@ interface SakeMatch {
   rice_variety: string | null;
   polishing_ratio: number | null;
   alcohol_percentage: number | null;
-  label_image_url: string | null;
-  bottle_image_url: string | null;
+  image_url: string | null;
   average_rating: number | null;
   total_ratings: number;
 }

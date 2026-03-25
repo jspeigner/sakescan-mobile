@@ -92,8 +92,7 @@ src/
     ├── supabase-hooks.ts      # React Query hooks for Supabase
     ├── supabase.ts            # Supabase client configuration
     ├── database.types.ts      # TypeScript types for database
-    ├── scan-history-store.ts  # Zustand store for scan history persistence
-    └── sake-data.ts           # Legacy mock data (deprecated)
+    └── scan-history-store.ts  # Zustand store for local scan history persistence
 ```
 
 ## 🔧 Tech Stack
@@ -253,27 +252,17 @@ Alternative flow:
 3. **Select** → Taps on sake card → Views detail
 4. **Scan** → Tries to scan → Prompted to sign in first
 
-## 📊 Mock Data
+## 📊 Data source
 
-Currently includes 4 sake products:
-1. **Dassai 23** - Premium Daiginjo (4.8★)
-2. **Hakkaisan Tokubetsu Honjozo** - Clean Honjozo (4.5★)
-3. **Gekkeikan Traditional** - Classic Junmai (4.2★)
-4. **Dassai 45** - Accessible Junmai Daiginjo (4.6★)
-
-Each includes:
-- High-quality images (Unsplash)
-- Detailed descriptions
-- Tasting notes
-- Food pairings
-- Reviews with ratings
-- Purchase links (where applicable)
+Sake catalog, images, ratings, and user data are loaded from **Supabase** (`sake`, `ratings`, `scans`, etc.). There is no bundled mock product database in the app.
 
 ## 🔐 Environment Variables
 
 **React Native App (.env):**
 - `EXPO_PUBLIC_SUPABASE_URL` - Your Supabase project URL
-- `EXPO_PUBLIC_SUPABASE_KEY` - Supabase anon/public key (starts with `eyJ...`)
+- `EXPO_PUBLIC_SUPABASE_ANON_KEY` or `EXPO_PUBLIC_SUPABASE_KEY` - Supabase anon/public key (starts with `eyJ...`)
+- `EXPO_PUBLIC_OPENAI_API_KEY` - OpenAI API key for client-side label scan (`openai-scan.ts`; legacy name `EXPO_PUBLIC_VIBECODE_OPENAI_API_KEY` still supported)
+- `EXPO_PUBLIC_BACKEND_URL` - Optional retailer search API base URL (legacy: `EXPO_PUBLIC_VIBECODE_BACKEND_URL`)
 
 **Supabase Edge Function Secrets:**
 You need to set these in your Supabase dashboard (Settings → Edge Functions → Manage secrets):
@@ -281,7 +270,7 @@ You need to set these in your Supabase dashboard (Settings → Edge Functions �
 - `SUPABASE_SERVICE_ROLE_KEY` - Service role key (from Supabase dashboard API settings)
 - `OPENAI_API_KEY` - Your OpenAI API key for GPT-4o Vision
 
-**Important: For testing in Vibecode:**
+**Important: For local testing:**
 1. Go to Supabase Dashboard → Authentication → Settings
 2. Under "Email Auth", **disable "Enable email confirmations"**
 3. This allows immediate sign-in after sign-up without email verification
@@ -414,4 +403,4 @@ None currently! 🎉
 
 ## 📄 License
 
-Proprietary - SakeScan by Vibecode
+Proprietary - SakeScan

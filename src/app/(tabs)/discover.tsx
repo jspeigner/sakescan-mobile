@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/lib/auth-context';
 import { useUserRatings, useUserFavorites } from '@/lib/supabase-hooks';
+import { resolveSakeImageUrl, FALLBACK_SAKE_LABEL_URL } from '@/lib/supabase';
 
 type TabType = 'favorites' | 'rated';
 
@@ -25,7 +26,7 @@ export default function SavedScreen() {
     id: fav.sake_id,
     name: fav.sake?.name ?? 'Unknown',
     brewery: fav.sake?.brewery ?? 'Unknown',
-    labelImageUrl: fav.sake?.label_image_url ?? 'https://images.unsplash.com/photo-1589464835340-c5c07fbe5b8e?w=600&h=800&fit=crop',
+    labelImageUrl: resolveSakeImageUrl(fav.sake?.image_url) ?? FALLBACK_SAKE_LABEL_URL,
     avgRating: fav.sake?.average_rating ?? 0,
   }));
 
@@ -34,7 +35,7 @@ export default function SavedScreen() {
     id: rating.sake_id,
     name: rating.sake?.name ?? 'Unknown',
     brewery: rating.sake?.brewery ?? 'Unknown',
-    labelImageUrl: rating.sake?.label_image_url ?? 'https://images.unsplash.com/photo-1589464835340-c5c07fbe5b8e?w=600&h=800&fit=crop',
+    labelImageUrl: resolveSakeImageUrl(rating.sake?.image_url) ?? FALLBACK_SAKE_LABEL_URL,
     userRating: rating.rating,
   }));
 

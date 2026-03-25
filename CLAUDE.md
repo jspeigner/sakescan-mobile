@@ -21,21 +21,12 @@
 </typescript>
 
 <environment>
-  You are in Vibecode. The system manages git and the dev server (port 8081).
-  DO NOT: manage git, touch the dev server, or check its state.
-  The user views the app through Vibecode App.
-  The user cannot see the code or interact with the terminal. Do not tell the user to do anything with the code or terminal.
-  You can see logs in the expo.log file.
-  The Vibecode App has tabs like ENV tab, API tab, LOGS tab. You can ask the user to use these tabs to view the logs, add enviroment variables, or give instructions for APIs like OpenAI, Nanobanana, Grok, Elevenlabs, etc. but first try to implement the functionality yourself.
-  The user is likely non-technical, communicate with them in an easy to understand manner.
-  If the user's request is vague or ambitious, scope down to specific functionality. Do everything for them.
-  For images, use URLs from unsplash.com. You can also tell the user they can use the IMAGES tab to generate and uplooad images.
+  Development in Cursor with Expo: use `bun` for scripts (e.g. `bun start`); Metro typically uses port 8081.
+  Configure secrets and public values in a root `.env` using `EXPO_PUBLIC_*` names; restart the dev server after changing env vars.
+  Prefer implementing and verifying changes in the repo yourself (including running commands when useful).
+  When the user is non-technical, explain in plain language. If a request is vague or ambitious, narrow it to concrete steps or features.
+  For placeholder images, URLs from unsplash.com are appropriate.
 </environment>
-
-
-<forbidden_files>
-  Do not edit: patches/, babel.config.js, metro.config.js, app.json, tsconfig.json, nativewind-env.d.ts
-</forbidden_files>
 
 <routing>
   Expo Router for file-based routing. Every file in src/app/ becomes a route.
@@ -89,7 +80,7 @@
 </safearea>
 
 <data>
-  Create realistic mock data when you lack access to real data.
+  Catalog and user-facing product data come from Supabase; do not add local mock sake/brewery databases in the repo.
   For image analysis: actually send to LLM don't mock.
 </data>
 
@@ -141,8 +132,7 @@
 </mistakes>
 
 <appstore>
-  Cannot assist with App Store or Google Play submission processes (app.json, eas.json, EAS CLI commands).
-  For submission help, click "Share" on the top right corner on the Vibecode App and select "Submit to App Store".
+  Store releases use Expo EAS Build / Submit plus Apple App Store Connect and Google Play Console. Follow current Expo, Apple, and Google documentation for signing, metadata, and review. Do not commit secrets or keys.
 </appstore> 
 
 <skills>
@@ -156,14 +146,11 @@ You have access to a few skills in the `.claude/skills` folder. Use them to your
 This is SakeScan - a "Vivino for Sake" mobile app.
 
 Key features:
-- Camera scanning with expo-camera for sake label recognition (currently simulated)
-- Browse/search sake database in Explore tab
-- Detailed sake pages with ratings, reviews, tasting notes, food pairings
-- Purchase links to online retailers
-- Profile screen with sign-in state
-- Beautiful UI with red accent color (#E63946), dark mode support, haptics
-
-Mock data in src/lib/sake-data.ts includes 4 sake products with full details.
+- Camera scanning with expo-camera + OpenAI Vision (client `openai-scan` / Edge Function `scan-label`)
+- Browse/search sake from Supabase in Explore and related screens
+- Detailed sake pages with ratings, reviews, and DB-backed descriptions
+- Profile with Supabase Auth and scan history
+- Beautiful UI with red accent color (Hinomaru crimson #BC002D), dark mode support, haptics
 
 Navigation structure:
 - (tabs)/index.tsx - Scan home screen
@@ -173,9 +160,7 @@ Navigation structure:
 - sake/[id].tsx - Dynamic sake detail screen
 
 Future enhancements needed:
-- Real OCR integration (Google ML Kit or Cloud Vision API)
-- Backend API connection (Django REST)
-- User authentication
-- Write reviews feature
-- Scan history tracking
+- Optional on-device OCR (ML Kit) as an alternative to cloud vision
+- Richer retailer / purchase flows
+- Expanded review and flavor metadata from the database
 </sakescan_app>

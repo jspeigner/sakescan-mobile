@@ -1,12 +1,10 @@
-import { View, Text } from 'react-native';
+import { View } from 'react-native';
 
-// This is a placeholder tab that's never actually shown
-// The actual camera functionality is in /camera route
-// This tab just provides the visual camera button in the tab bar
+/**
+ * Middle tab uses a custom `tabBarButton` (opens /camera). This screen is a no-op placeholder.
+ * Avoid Redirect / router.replace here — tab mount and focus timing differs on device vs Simulator
+ * and can race with cold-start navigation (blank screen or stuck stack).
+ */
 export default function ScanCameraTab() {
-  return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-      <Text>This screen should never be visible</Text>
-    </View>
-  );
+  return <View style={{ flex: 1 }} />;
 }

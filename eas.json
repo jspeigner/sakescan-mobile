@@ -1,6 +1,7 @@
 {
   "cli": {
-    "version": ">=16.17.4"
+    "version": ">=16.17.4",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -11,12 +12,15 @@
       }
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "ios": {
+        "simulator": true
+      }
     },
     "production": {
+      "autoIncrement": true,
       "ios": {
         "distribution": "store",
-        "autoIncrement": "buildNumber",
         "image": "latest"
       },
       "android": {

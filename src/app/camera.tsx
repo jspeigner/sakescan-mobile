@@ -6,6 +6,7 @@ import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { scanSakeLabel } from '@/lib/openai-scan';
 
 export default function CameraScreen() {
@@ -140,16 +141,39 @@ export default function CameraScreen() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        alert('Please allow photo library access to scan a label from an image.');
+        return;
+      }
+
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: false,
         quality: 0.7,
         base64: true,
       });
 
-      if (!result.canceled && result.assets[0]?.base64) {
-        await processImage(result.assets[0].base64, result.assets[0].uri);
+      if (result.canceled || !result.assets[0]) return;
+
+      const asset = result.assets[0];
+      let base64 = asset.base64 ?? null;
+      if (!base64 && asset.uri) {
+        try {
+          base64 = await FileSystem.readAsStringAsync(asset.uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+        } catch (readErr) {
+          console.error('Failed to read image as base64:', readErr);
+        }
       }
+
+      if (!base64) {
+        alert('Could not read this image. Try another photo or take a new picture.');
+        return;
+      }
+
+      await processImage(base64, asset.uri);
     } catch (error) {
       console.error('Image picker error:', error);
       alert('Failed to pick image. Please try again.');

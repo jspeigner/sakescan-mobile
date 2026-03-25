@@ -122,6 +122,12 @@ export default function WelcomeScreen() {
     router.replace('/(tabs)');
   };
 
+  const handleContinueAsGuest = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    continueAsGuest();
+    router.replace('/(tabs)');
+  };
+
   const handleSignInApple = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setIsSigningIn(true);
@@ -158,18 +164,12 @@ export default function WelcomeScreen() {
     }
   };
 
-  const handleContinueAsGuest = async () => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    continueAsGuest();
-    router.replace('/(tabs)');
-  };
-
   return (
-    <View className="flex-1 bg-[#FAFAF8]">
+    <View style={{ flex: 1, backgroundColor: '#FAFAF8' }}>
       {/* Wave Pattern Background */}
       <WavePattern />
 
-      {/* Skip Button */}
+      {/* Skip → browse as guest */}
       <View
         className="absolute right-5 z-10"
         style={{ top: insets.top + 12 }}
@@ -181,8 +181,11 @@ export default function WelcomeScreen() {
         </Pressable>
       </View>
 
-      {/* Main Content */}
-      <View className="flex-1 items-center justify-center px-6" style={{ paddingTop: insets.top }}>
+      {/* Main Content — inline flex so layout works even if NativeWind release output differs */}
+      <View
+        className="items-center justify-center px-6"
+        style={{ flex: 1, paddingTop: insets.top }}
+      >
         {/* Logo Icon */}
         <SakeIcon />
 
@@ -270,7 +273,6 @@ export default function WelcomeScreen() {
           </Text>
         </Pressable>
 
-        {/* Continue as Guest */}
         <Pressable onPress={handleContinueAsGuest} className="items-center py-2">
           <Text className="text-[#8B8B8B] text-base">
             Continue as Guest

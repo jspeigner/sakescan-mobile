@@ -53,7 +53,9 @@ Create a page at **`https://sakescan.com/auth/callback`** (or `/auth/callback.ht
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
       if (accessToken && refreshToken) {
-        const appUrl = 'vibecode://reset-password#' + hash;
+        // Must match expo.scheme in app.json (see src/lib/app-linking.ts)
+        const APP_SCHEME = 'vibecode';
+        const appUrl = APP_SCHEME + '://reset-password#' + hash;
         const openAppLink = document.getElementById('openApp');
         openAppLink.href = appUrl;
 
@@ -84,9 +86,9 @@ In **Authentication → URL Configuration**:
 | **Site URL** | `https://sakescan.com` |
 | **Redirect URLs** | Add these: |
 | | `https://sakescan.com/auth/callback` |
-| | `vibecode://**` |
-| | `vibecode://reset-password` |
-| | `vibecode://auth/callback` |
+| | `{your-scheme}://**` (same as `expo.scheme` in app.json) |
+| | `{your-scheme}://reset-password` |
+| | `{your-scheme}://auth/callback` |
 
 ## 3. Update the app's redirectTo
 
@@ -103,14 +105,14 @@ const resetPassword = async (email: string) => {
 };
 ```
 
-The web page will then redirect to `vibecode://` on mobile, or show instructions on desktop.
+The web page will then redirect to your app’s custom scheme on mobile, or show instructions on desktop.
 
 ## Flow
 
 1. User taps "Forgot password" in app → Supabase sends email
 2. User taps link in email → Opens in browser
 3. Browser goes to Supabase → Supabase redirects to `https://sakescan.com/auth/callback#access_token=...&refresh_token=...&type=recovery`
-4. **On mobile:** Page immediately redirects to `vibecode://reset-password#...` → App opens
+4. **On mobile:** Page immediately redirects to `{scheme}://reset-password#...` → App opens
 5. **On desktop:** Page shows "Open app on your phone" with a fallback button
 
 ## Hosting

@@ -10,16 +10,17 @@
 
 **Symptom:** Password reset email link goes to `http://localhost:3000/?error=access_denied&error_code=otp_expired` instead of opening the app.
 
-**Cause:** Supabase redirects to Site URL when `vibecode://reset-password` is not in the allowed Redirect URLs list.
+**Cause:** Supabase redirects to Site URL when your app’s custom-scheme URLs are not in the allowed Redirect URLs list. The scheme must match `expo.scheme` in `app.json`.
 
 ### Fix
 
 1. Go to **Authentication** → **URL Configuration**
-2. Under **Redirect URLs**, add:
-   - `vibecode://**`
-   - `vibecode://reset-password`
-   - `vibecode://auth/callback`
-3. **Site URL:** Set to `vibecode://` (or your production web URL if you have one). Avoid `localhost:3000` for a mobile-only app.
+2. Under **Redirect URLs**, add every URL your build can emit for auth callbacks. The app uses `expo-linking` **`Linking.createURL('auth/callback')`** (see `getAuthEmailRedirectUri()` in `src/lib/app-linking.ts`) — in dev this may look like `exp://…/--/auth/callback`; in production it matches your `expo.scheme` (e.g. `sakescan://auth/callback`). Add:
+   - `YOUR_SCHEME://**`
+   - `YOUR_SCHEME://reset-password`
+   - `YOUR_SCHEME://auth/callback`
+   - Any exact `exp://…` dev URLs you see when testing password reset (B15)
+3. **Site URL:** Use your production web URL (e.g. `https://sakescan.com`) if you use a web auth callback, or your primary deep-link base if the app is mobile-only. Avoid `localhost:3000` for production mobile flows.
 4. Click **Save**
 
 **Note:** Reset links expire in 1 hour. If the link is old, request a new one.

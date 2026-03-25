@@ -8,6 +8,7 @@ import {
   Modal,
   Share,
   Alert,
+  StyleSheet,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -28,11 +29,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useSake, useSakeRatings, useIsFavorite, useToggleFavorite } from '@/lib/supabase-hooks';
 import { useAuth } from '@/lib/auth-context';
+import { resolveSakeImageUrl, FALLBACK_SAKE_LABEL_URL } from '@/lib/supabase';
 import { useTheme } from '@/lib/theme-context';
 import { getUserLocation } from '@/lib/location';
 import type { RatingWithUser } from '@/lib/database.types';
 
-type FlavorProfile = 'Fruity' | 'Dry' | 'Floral' | 'Smooth' | 'Rich' | 'Crisp' | 'Umami' | 'Sweet';
 type ServingTemp = 'Chilled' | 'Room' | 'Warm';
 
 export default function SakeDetailScreen() {
@@ -45,7 +46,7 @@ export default function SakeDetailScreen() {
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
 
   // Fetch from Supabase only
-  const { data: supabaseSake, isLoading } = useSake(id);
+  const { data: supabaseSake, isLoading, isError, refetch } = useSake(id);
 
   // Favorites
   const { data: isFavorite } = useIsFavorite(user?.id, id);
@@ -58,6 +59,32 @@ export default function SakeDetailScreen() {
     return (
       <View className="flex-1 items-center justify-center" style={{ backgroundColor: colors.background }}>
         <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (isError) {
+    return (
+      <View className="flex-1 items-center justify-center px-5" style={{ backgroundColor: colors.background }}>
+        <Wine size={48} color={colors.primary} />
+        <Text className="font-semibold text-lg mt-4 text-center" style={{ color: colors.text }}>
+          Could not load this sake
+        </Text>
+        <Text className="text-center mt-2" style={{ color: colors.textSecondary }}>
+          Check your internet connection, then try again. If the problem continues, the database may be unavailable.
+        </Text>
+        <Pressable
+          onPress={() => {
+            void refetch();
+          }}
+          className="mt-6 px-6 py-3 rounded-full"
+          style={{ backgroundColor: colors.primary }}
+        >
+          <Text className="text-white font-semibold">Try again</Text>
+        </Pressable>
+        <Pressable onPress={() => router.back()} className="mt-4 py-2">
+          <Text style={{ color: colors.textSecondary }}>Go back</Text>
+        </Pressable>
       </View>
     );
   }
@@ -89,7 +116,7 @@ export default function SakeDetailScreen() {
     description: supabaseSake.description ?? 'No description available.',
     avgRating: supabaseSake.average_rating ?? 0,
     reviewCount: supabaseSake.total_ratings ?? 0,
-    labelImageUrl: supabaseSake.label_image_url ?? 'https://images.unsplash.com/photo-1589464835340-c5c07fbe5b8e?w=600&h=800&fit=crop',
+    labelImageUrl: resolveSakeImageUrl(supabaseSake.image_url) ?? FALLBACK_SAKE_LABEL_URL,
     alcoholContent: supabaseSake.alcohol_percentage ? `${supabaseSake.alcohol_percentage}%` : 'N/A',
     riceMilling: supabaseSake.polishing_ratio ? `${supabaseSake.polishing_ratio}%` : undefined,
     riceType: supabaseSake.rice_variety ?? 'N/A',
@@ -101,9 +128,6 @@ export default function SakeDetailScreen() {
     country: 'Japan',
   };
 
-  // Mock flavor profile - in production, this would come from DB
-  const flavorProfile: FlavorProfile[] = ['Fruity', 'Dry', 'Floral', 'Smooth'];
-
   const handleFavorite = async () => {
     if (isGuest || !user?.id || !id) {
       router.push('/welcome');
@@ -113,14 +137,15 @@ export default function SakeDetailScreen() {
     toggleFavorite.mutate({ userId: user.id, sakeId: id, isFavorite: !!isFavorite });
   };
 
+  const shareMessage = `Check out ${sake.name} by ${brewery.name} on SakeScan — https://sakescan.com`;
+
   const handleShare = async () => {
     setShowMoreMenu(false);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
       await Share.share({
-        message: `Check out ${sake.name} by ${brewery.name} on SakeScan!`,
+        message: shareMessage,
         title: sake.name,
-        url: undefined,
       });
     } catch {
       // User cancelled or share failed
@@ -201,12 +226,12 @@ export default function SakeDetailScreen() {
           <Image
             source={{ uri: sake.labelImageUrl }}
             style={{ width: '100%', height: '100%' }}
-            contentFit="contain"
+            contentFit="cover"
           />
         </View>
 
-        {/* Content */}
-        <View className="px-5 pt-6">
+        {/* Content — clear separation from hero (B13) */}
+        <View className="px-5 pt-6" style={{ backgroundColor: colors.background }}>
           {/* Title Section */}
           <View className="flex-row items-start justify-between mb-2">
             <Text
@@ -274,31 +299,6 @@ export default function SakeDetailScreen() {
               <Text className="text-xl font-bold" style={{ color: colors.text }}>
                 {sake.riceType}
               </Text>
-            </View>
-          </View>
-
-          {/* Flavor Profile */}
-          <View className="mb-6">
-            <Text className="text-xs font-medium mb-3 uppercase tracking-wide" style={{ color: colors.textSecondary }}>
-              Flavor Profile
-            </Text>
-            <View className="flex-row flex-wrap gap-2">
-              {flavorProfile.map((flavor, index) => (
-                <View
-                  key={flavor}
-                  className="px-4 py-2 rounded-full"
-                  style={{
-                    backgroundColor: index === 0 ? colors.primary : colors.surface,
-                  }}
-                >
-                  <Text
-                    className="text-sm font-medium"
-                    style={{ color: index === 0 ? '#FFFFFF' : colors.textSecondary }}
-                  >
-                    {flavor}
-                  </Text>
-                </View>
-              ))}
             </View>
           </View>
 
@@ -462,26 +462,29 @@ export default function SakeDetailScreen() {
         </Pressable>
       </View>
 
-      {/* More Menu Modal (B01) */}
+      {/* More Menu Modal — single flex root so overlay + sheet layout correctly (B01) */}
       <Modal
         visible={showMoreMenu}
         transparent
         animationType="slide"
         onRequestClose={() => setShowMoreMenu(false)}
       >
-        <Pressable
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' }}
-          onPress={() => setShowMoreMenu(false)}
-        />
-        <View
-          style={{
-            backgroundColor: colors.background,
-            borderTopLeftRadius: 24,
-            borderTopRightRadius: 24,
-            paddingBottom: insets.bottom + 16,
-            paddingTop: 16,
-          }}
-        >
+        <View style={styles.menuRoot}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            accessibilityRole="button"
+            accessibilityLabel="Close menu"
+            onPress={() => setShowMoreMenu(false)}
+          />
+          <View
+            style={{
+              backgroundColor: colors.background,
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              paddingBottom: insets.bottom + 16,
+              paddingTop: 16,
+            }}
+          >
           <View
             style={{
               width: 36,
@@ -526,7 +529,16 @@ export default function SakeDetailScreen() {
             </Text>
           </Pressable>
         </View>
+        </View>
       </Modal>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  menuRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+});

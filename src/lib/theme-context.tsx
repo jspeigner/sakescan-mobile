@@ -22,6 +22,8 @@ const lightColors = {
   textTertiary: '#8B8B8B',
   primary: '#C9A227',
   primaryLight: '#F5EED9',
+  /** Hinomaru crimson — matches Japanese flag red (approx. #BC002D / 深緋) */
+  brandRed: '#BC002D',
   red: '#dc2626',
   redLight: '#FEF2F2',
   border: '#F0EDE5',
@@ -40,6 +42,7 @@ const darkColors = {
   textTertiary: '#8B8B8B',
   primary: '#C9A227',
   primaryLight: '#3a3428',
+  brandRed: '#BC002D',
   red: '#ef4444',
   redLight: '#2d1515',
   border: '#333333',
@@ -51,17 +54,20 @@ const darkColors = {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+const isValidThemeMode = (v: string): v is ThemeMode =>
+  v === 'light' || v === 'dark' || v === 'auto';
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const systemColorScheme = useColorScheme();
-  const [themeMode, setThemeModeState] = useState<ThemeMode>('light');
+  const [themeMode, setThemeModeState] = useState<ThemeMode>('auto');
 
   // Load saved theme preference
   useEffect(() => {
     const loadTheme = async () => {
       try {
         const saved = await AsyncStorage.getItem(THEME_KEY);
-        if (saved) {
-          setThemeModeState(saved as ThemeMode);
+        if (saved && isValidThemeMode(saved)) {
+          setThemeModeState(saved);
         }
       } catch (err) {
         console.error('Error loading theme:', err);

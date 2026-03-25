@@ -1,8 +1,9 @@
 import React from 'react';
-import { Pressable } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { Tabs, router } from 'expo-router';
 import { Compass, Home, Heart, Camera, Building2 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme-context';
 
 function CameraTabButton() {
@@ -13,30 +14,35 @@ function CameraTabButton() {
   };
 
   return (
-    <Pressable
-      onPress={handlePress}
-      style={{
-        width: 56,
-        height: 56,
-        borderRadius: 28,
-        backgroundColor: colors.primary,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginTop: -20,
-        shadowColor: colors.primary,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 8,
-      }}
-    >
-      <Camera size={26} color="#FFFFFF" strokeWidth={2} />
-    </Pressable>
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 2 }}>
+      <Pressable
+        onPress={handlePress}
+        style={{
+          width: 56,
+          height: 56,
+          borderRadius: 28,
+          backgroundColor: colors.brandRed,
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginTop: -18,
+          shadowColor: colors.brandRed,
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.3,
+          shadowRadius: 8,
+          elevation: 8,
+        }}
+      >
+        <Camera size={26} color="#FFFFFF" strokeWidth={2} />
+      </Pressable>
+    </View>
   );
 }
 
 export default function TabLayout() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = 56 + Math.max(insets.bottom, 10);
+
   return (
     <Tabs
       screenOptions={{
@@ -46,14 +52,21 @@ export default function TabLayout() {
           backgroundColor: colors.background,
           borderTopColor: colors.border,
           borderTopWidth: 1,
-          paddingTop: 8,
-          height: 85,
+          paddingTop: 6,
+          paddingBottom: Math.max(insets.bottom, 10),
+          height: tabBarHeight,
         },
-        tabBarItemStyle: { alignItems: 'center', justifyContent: 'center' },
+        tabBarItemStyle: {
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          paddingTop: 4,
+        },
+        tabBarIconStyle: { marginBottom: -2 },
         tabBarLabelStyle: {
           fontSize: 9,
           fontWeight: '600',
-          marginTop: 2,
+          marginTop: 0,
           letterSpacing: 0.5,
         },
         headerShown: false,

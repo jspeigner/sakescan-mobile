@@ -1,6 +1,16 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { supabase } from './supabase';
-import type { Sake, Rating, User, ScanWithSake, RatingWithUser, ScanLabelResponse, FavoriteWithSake } from './database.types';
+import type {
+  Sake,
+  Rating,
+  User,
+  ScanWithSake,
+  RatingWithUser,
+  RatingWithSake,
+  ScanLabelResponse,
+  FavoriteWithSake,
+  BreweryCatalogRow,
+} from './database.types';
 
 // ============ SAKE QUERIES ============
 
@@ -98,6 +108,33 @@ export function useSakeByRegion(region: string | null) {
   });
 }
 
+/** Page size for Breweries tab — must match sensible default in `list_breweries_catalog`. */
+export const BREWERIES_CATALOG_PAGE_SIZE = 30;
+
+/**
+ * Paginated breweries aggregated from the full `sake` table (Supabase RPC).
+ * Ordered by sake count descending; uses keyset-stable sort for consistent paging.
+ */
+export function useBreweriesCatalog() {
+  return useInfiniteQuery({
+    queryKey: ['breweries', 'catalog', BREWERIES_CATALOG_PAGE_SIZE],
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }) => {
+      const offset = pageParam as number;
+      const { data, error } = await supabase.rpc('list_breweries_catalog', {
+        p_limit: BREWERIES_CATALOG_PAGE_SIZE,
+        p_offset: offset,
+      });
+      if (error) throw error;
+      return (data ?? []) as BreweryCatalogRow[];
+    },
+    getNextPageParam: (lastPage, allPages) => {
+      if (lastPage.length < BREWERIES_CATALOG_PAGE_SIZE) return undefined;
+      return allPages.reduce((sum, page) => sum + page.length, 0);
+    },
+  });
+}
+
 // ============ RATING QUERIES ============
 
 export function useSakeRatings(sakeId: string | undefined) {
@@ -139,14 +176,14 @@ export function useUserRatings(userId: string | undefined) {
             name,
             brewery,
             type,
-            label_image_url
+            image_url
           )
         `)
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data;
+      return data as RatingWithSake[];
     },
     enabled: !!userId,
   });
@@ -222,7 +259,7 @@ export function useAllScans(options?: { limit?: number }) {
             name,
             brewery,
             type,
-            label_image_url,
+            image_url,
             average_rating
           )
         `)
@@ -250,7 +287,7 @@ export function useUserScans(userId: string | undefined) {
             name,
             brewery,
             type,
-            label_image_url
+            image_url
           )
         `)
         .eq('user_id', userId)
@@ -502,7 +539,7 @@ export function useUserFavorites(userId: string | undefined) {
             name,
             brewery,
             type,
-            label_image_url,
+            image_url,
             average_rating
           )
         `)

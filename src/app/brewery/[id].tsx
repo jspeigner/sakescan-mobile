@@ -1,9 +1,11 @@
-import { Text, View, ScrollView, Pressable, Image, ActivityIndicator } from 'react-native';
+import { Text, View, ScrollView, Pressable, ActivityIndicator, Share } from 'react-native';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, router } from 'expo-router';
 import { ChevronLeft, Share2, Star, Building2 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useSearchSake } from '@/lib/supabase-hooks';
+import { resolveSakeImageUrl } from '@/lib/supabase';
 
 export default function BreweryScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -22,7 +24,14 @@ export default function BreweryScreen() {
 
   const handleShare = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // TODO: Implement share
+    try {
+      await Share.share({
+        message: `Discover ${breweryName} on SakeScan — https://sakescan.com`,
+        title: breweryName,
+      });
+    } catch {
+      /* cancelled */
+    }
   };
 
   if (isLoading) {
@@ -174,7 +183,9 @@ export default function BreweryScreen() {
           </View>
 
           <View className="flex-row flex-wrap" style={{ gap: 12 }}>
-            {filteredSakes.map((sake) => (
+            {filteredSakes.map((sake) => {
+              const imageUrl = resolveSakeImageUrl(sake.image_url);
+              return (
               <Pressable
                 key={sake.id}
                 onPress={() => handleSakePress(sake.id)}
@@ -185,11 +196,11 @@ export default function BreweryScreen() {
                   className="rounded-2xl overflow-hidden mb-2"
                   style={{ backgroundColor: '#F5EED9', height: 160 }}
                 >
-                  {sake.label_image_url ? (
+                  {imageUrl ? (
                     <Image
-                      source={{ uri: sake.label_image_url }}
-                      className="w-full h-full"
-                      resizeMode="cover"
+                      source={{ uri: imageUrl }}
+                      style={{ width: '100%', height: 160 }}
+                      contentFit="cover"
                     />
                   ) : (
                     <View className="flex-1 items-center justify-center">
@@ -212,7 +223,8 @@ export default function BreweryScreen() {
                   </View>
                 )}
               </Pressable>
-            ))}
+            );
+            })}
           </View>
         </View>
       </ScrollView>

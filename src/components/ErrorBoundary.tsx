@@ -67,19 +67,31 @@ export class ErrorBoundary extends React.Component<Props, State> {
           </Text>
 
           {this.state.error && (
-            <ScrollView style={{ marginTop: 24, maxHeight: 200, width: '100%' }}>
-              <View style={{ backgroundColor: '#FFF', padding: 16, borderRadius: 8 }}>
-                <Text style={{ fontSize: 12, color: '#C9342A', fontFamily: 'monospace' }}>
+            <View
+              style={{
+                marginTop: 20,
+                maxHeight: 160,
+                width: '100%',
+                backgroundColor: '#FFF',
+                padding: 12,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: '#E8E4D9',
+              }}
+            >
+              <ScrollView nestedScrollEnabled>
+                <Text selectable style={{ fontSize: 11, color: '#C9342A', fontFamily: 'monospace' }}>
                   {this.state.error.toString()}
+                  {this.state.error.stack ? `\n\n${this.state.error.stack}` : ''}
                 </Text>
-              </View>
-            </ScrollView>
+              </ScrollView>
+            </View>
           )}
 
           <Pressable
             onPress={this.handleReset}
             style={{
-              marginTop: 32,
+              marginTop: 24,
               backgroundColor: '#C9A227',
               paddingHorizontal: 32,
               paddingVertical: 16,

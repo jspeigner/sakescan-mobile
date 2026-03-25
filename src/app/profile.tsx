@@ -14,7 +14,8 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { User, LogOut, Trash2, ChevronRight, Star, Camera, BookOpen, X, CheckCircle, AlertCircle, Clock, Bell, Moon, Mail, Edit3, Shield } from 'lucide-react-native';
+import { User, LogOut, Trash2, ChevronRight, Star, Camera, BookOpen, X, CheckCircle, AlertCircle, Clock, Bell, Moon, Mail, Edit3, Shield, Languages } from 'lucide-react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -23,15 +24,17 @@ import * as FileSystem from 'expo-file-system';
 import { decode } from 'base64-arraybuffer';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
+import { useI18n, LANGUAGE_LABELS, type Language } from '@/lib/i18n-context';
 import { useNotifications } from '@/lib/notification-context';
-import { supabase } from '@/lib/supabase';
+import { supabase, resolveSakeImageUrl } from '@/lib/supabase';
 import { useUserScans, useUserRatings, useUpdateUserProfile, useUserProfile } from '@/lib/supabase-hooks';
 import type { ScanWithSake } from '@/lib/database.types';
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { user, isGuest, signOut, refreshUser } = useAuth();
-  const { themeMode, setThemeMode, colors } = useTheme();
+  const { setThemeMode, colors, isDarkMode } = useTheme();
+  const { language, setLanguage, t } = useI18n();
   const { notificationsEnabled, setNotificationsEnabled } = useNotifications();
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
@@ -215,7 +218,23 @@ export default function ProfileScreen() {
     await setThemeMode(value ? 'dark' : 'light');
   };
 
-  const isDarkMode = themeMode === 'dark';
+  const openLanguagePicker = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const langs: Language[] = ['en', 'ja', 'ko', 'zh-TW'];
+    Alert.alert(
+      t('profile.language'),
+      t('profile.languageHint'),
+      [
+        ...langs.map((lang) => ({
+          text: `${LANGUAGE_LABELS[lang]}${language === lang ? ' ✓' : ''}`,
+          onPress: () => {
+            void setLanguage(lang);
+          },
+        })),
+        { text: t('common.cancel'), style: 'cancel' },
+      ],
+    );
+  };
 
   return (
     <View className="flex-1" style={{ backgroundColor: colors.background, paddingTop: insets.top }}>
@@ -227,7 +246,7 @@ export default function ProfileScreen() {
         {/* Header */}
         <View className="px-5 py-4">
           <Text style={{ fontFamily: 'serif', fontSize: 28, fontWeight: '600', color: colors.text }}>
-            Profile
+            {t('profile.title')}
           </Text>
         </View>
 
@@ -367,17 +386,20 @@ export default function ProfileScreen() {
                         className="w-full h-full"
                         resizeMode="cover"
                       />
-                    ) : scan.sake?.label_image_url ? (
-                      <Image
-                        source={{ uri: scan.sake.label_image_url }}
-                        className="w-full h-full"
-                        resizeMode="cover"
-                      />
-                    ) : (
-                      <View className="flex-1 items-center justify-center">
-                        <Camera size={20} color="#C9A227" />
-                      </View>
-                    )}
+                    ) : (() => {
+                      const url = resolveSakeImageUrl(scan.sake?.image_url);
+                      return url ? (
+                        <Image
+                          source={{ uri: url }}
+                          className="w-full h-full"
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <View className="flex-1 items-center justify-center">
+                          <Camera size={20} color="#C9A227" />
+                        </View>
+                      );
+                    })()}
                   </View>
 
                   {/* Scan Info */}
@@ -416,7 +438,14 @@ export default function ProfileScreen() {
             </View>
 
             {scans.length > 5 && (
-              <Pressable className="items-center py-3">
+              <Pressable
+                className="items-center py-3"
+                hitSlop={8}
+                onPress={async () => {
+                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  router.push('/scan-history');
+                }}
+              >
                 <Text className="text-[#C9A227] font-medium">
                   View all {scans.length} scans
                 </Text>
@@ -475,10 +504,10 @@ export default function ProfileScreen() {
               </View>
               <View className="flex-1 ml-3">
                 <Text className="text-[#1a1a1a] text-base font-medium">
-                  Dark Mode
+                  {t('profile.darkMode')}
                 </Text>
                 <Text className="text-[#8B8B8B] text-xs mt-0.5">
-                  Switch to dark theme
+                  {t('profile.darkModeHint')}
                 </Text>
               </View>
               <Switch
@@ -488,6 +517,29 @@ export default function ProfileScreen() {
                 thumbColor="#FFFFFF"
               />
             </View>
+
+            {/* Language (B07) */}
+            <Pressable
+              className="flex-row items-center p-4"
+              style={{ borderBottomWidth: 1, borderBottomColor: '#F0EDE5' }}
+              onPress={openLanguagePicker}
+            >
+              <View
+                className="w-10 h-10 rounded-full items-center justify-center"
+                style={{ backgroundColor: '#E0F2FE' }}
+              >
+                <Languages size={20} color="#0284C7" />
+              </View>
+              <View className="flex-1 ml-3">
+                <Text className="text-[#1a1a1a] text-base font-medium">
+                  {t('profile.language')}
+                </Text>
+                <Text className="text-[#8B8B8B] text-xs mt-0.5">
+                  {LANGUAGE_LABELS[language]}
+                </Text>
+              </View>
+              <ChevronRight size={20} color="#8B8B8B" />
+            </Pressable>
 
             {/* Privacy */}
             <Pressable
@@ -627,10 +679,11 @@ export default function ProfileScreen() {
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={{ width: '100%' }}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
           >
             <View
               className="rounded-t-3xl"
-              style={{ backgroundColor: colors.background, paddingBottom: insets.bottom + 20 }}
+              style={{ backgroundColor: colors.background, paddingBottom: insets.bottom + 20, maxHeight: '92%' }}
             >
               {/* Modal Header */}
               <View
@@ -653,6 +706,8 @@ export default function ProfileScreen() {
               <ScrollView
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 28 }}
+                bounces={false}
               >
                 {/* Avatar Edit */}
                 <View className="items-center py-6">
@@ -667,10 +722,11 @@ export default function ProfileScreen() {
                             <ActivityIndicator size="large" color={colors.primary} />
                           </View>
                         ) : (localAvatarUri || editAvatarUrl) ? (
-                          <Image
+                          <ExpoImage
                             source={{ uri: localAvatarUri ?? editAvatarUrl }}
-                            className="w-full h-full"
-                            resizeMode="cover"
+                            style={{ width: '100%', height: '100%' }}
+                            contentFit="cover"
+                            transition={200}
                           />
                         ) : (
                           <View className="flex-1 items-center justify-center w-full h-full">

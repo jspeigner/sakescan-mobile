@@ -4,6 +4,7 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase, ensureUserExists } from './supabase';
+import { getAuthEmailRedirectUri, getOAuthRedirectUri } from './app-linking';
 import type { Session, User } from '@supabase/supabase-js';
 
 // Required for Google Auth to work on web
@@ -47,10 +48,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const sessionPromise = supabase.auth.getSession();
         
         const result = await Promise.race([sessionPromise, timeoutPromise]);
-        
+
         if (isMounted && result && 'data' in result) {
-          setSession(result.data.session);
-          setUser(result.data.session?.user ?? null);
+          const { data, error } = result;
+          if (error) {
+            console.log('[Auth] getSession error:', error.message);
+          }
+          setSession(data.session);
+          setUser(data.session?.user ?? null);
         }
       } catch (error) {
         console.log('[Auth] Initial session check failed:', error);
@@ -77,6 +82,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isMounted = false;
       subscription.unsubscribe();
     };
+  }, []);
+
+  // Release/TestFlight: never block the UI tree on a hung getSession().
+  useEffect(() => {
+    const failSafe = setTimeout(() => {
+      setIsLoading((prev) => (prev ? false : prev));
+    }, 8000);
+    return () => clearTimeout(failSafe);
   }, []);
 
   const signInWithEmail = async (email: string, password: string) => {
@@ -115,9 +128,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const resetPassword = async (email: string) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: 'https://sakescan.com/auth/callback',
-    });
+    // App deep link — add this exact URL to Supabase Dashboard → Auth → Redirect URLs (see docs/SUPABASE_BUG_FIXES.md).
+    const redirectTo = getAuthEmailRedirectUri();
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
     if (error) throw error;
   };
 
@@ -196,12 +209,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = async () => {
     setIsLoading(true);
+    const oauthRedirect = getOAuthRedirectUri();
     try {
       console.log('[Auth] Starting Google Sign In...');
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: 'vibecode://auth/callback',
+          redirectTo: oauthRedirect,
           skipBrowserRedirect: true,
         },
       });
@@ -211,10 +225,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (data.url) {
         // Open the OAuth URL in an in-app browser
-        const result = await WebBrowser.openAuthSessionAsync(
-          data.url,
-          'vibecode://auth/callback'
-        );
+        const result = await WebBrowser.openAuthSessionAsync(data.url, oauthRedirect);
 
         console.log('[Auth] Browser result:', result.type);
 

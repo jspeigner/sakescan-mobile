@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Text, View, ScrollView, Pressable, Image, ActivityIndicator } from 'react-native';
-import { Search, Star, Bell, ChevronDown, User, SlidersHorizontal, Wine, Clock, Globe } from 'lucide-react-native';
+import { Text, View, ScrollView, Pressable, ActivityIndicator } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
+import { Search, Star, Bell, ChevronDown, User, SlidersHorizontal, Wine, Clock, Globe, RefreshCw } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useSakeList, useSakeByRegion, useAllScans } from '@/lib/supabase-hooks';
+import { resolveSakeImageUrl, FALLBACK_SAKE_LABEL_URL } from '@/lib/supabase';
 import type { Sake as SupabaseSake } from '@/lib/database.types';
 import { useScanHistoryStore } from '@/lib/scan-history-store';
 
@@ -18,7 +20,7 @@ function mapSupabaseSake(sake: SupabaseSake) {
     breweryName: sake.brewery ?? 'Unknown',
     sakeType: sake.type ?? 'Other',
     avgRating: sake.average_rating ?? 0,
-    labelImageUrl: sake.label_image_url ?? 'https://images.unsplash.com/photo-1589464835340-c5c07fbe5b8e?w=600&h=800&fit=crop',
+    labelImageUrl: resolveSakeImageUrl(sake.image_url) ?? FALLBACK_SAKE_LABEL_URL,
     region: sake.region ?? sake.prefecture ?? '',
   };
 }
@@ -37,7 +39,7 @@ export default function ExploreScreen() {
   }, [loadHistory]);
 
   // Fetch all sake from Supabase
-  const { data: supabaseData, isLoading } = useSakeList({ limit: 50 });
+  const { data: supabaseData, isLoading, isError, error, refetch, isFetching } = useSakeList({ limit: 50 });
 
   // Fetch all scans from Supabase (global discovery)
   const { data: allScansData, isLoading: isLoadingScans } = useAllScans({ limit: 50 });
@@ -61,6 +63,27 @@ export default function ExploreScreen() {
   const handleSakePress = async (sakeId: string) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.push(`/sake/${sakeId}`);
+  };
+
+  /** Full browse list (search-results), respecting the active type chip. */
+  const handleSeeAllCatalog = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (activeFilter === 'All Types') {
+      router.push('/search-results');
+    } else {
+      router.push({
+        pathname: '/search-results',
+        params: { types: activeFilter },
+      });
+    }
+  };
+
+  const handleSeeAllNiigata = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push({
+      pathname: '/search-results',
+      params: { regions: 'Niigata' },
+    });
   };
 
   // Filter sake based on type filter
@@ -87,7 +110,7 @@ export default function ExploreScreen() {
         breweryName: sake.brewery ?? 'Unknown',
         sakeType: sake.type ?? 'Other',
         avgRating: sake.average_rating ?? 0,
-        labelImageUrl: sake.label_image_url ?? 'https://images.unsplash.com/photo-1589464835340-c5c07fbe5b8e?w=600&h=800&fit=crop',
+        labelImageUrl: resolveSakeImageUrl(sake.image_url) ?? FALLBACK_SAKE_LABEL_URL,
         scanCount: 1,
         scannedAt: scan.created_at,
       };
@@ -159,7 +182,37 @@ export default function ExploreScreen() {
           ))}
         </ScrollView>
 
-        {isLoading ? (
+        {isError ? (
+          <View className="items-center py-16 px-5">
+            <Wine size={48} color="#C9A227" />
+            <Text className="text-[#1a1a1a] font-semibold text-lg mt-4 text-center">
+              Could not load the sake list
+            </Text>
+            <Text className="text-[#8B8B8B] text-center mt-2 text-sm">
+              {error &&
+              typeof error === 'object' &&
+              'message' in error &&
+              String((error as { message: string }).message).toLowerCase().includes('permission denied')
+                ? 'The database is not allowing public reads on the sake catalog. In Supabase, run migrations (including GRANT SELECT on public.sake for anon) or check Row Level Security policies.'
+                : 'Check your internet connection. Use the same Supabase project for EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY (or EXPO_PUBLIC_SUPABASE_KEY).'}
+            </Text>
+            {__DEV__ && error && typeof error === 'object' && 'message' in error ? (
+              <Text className="text-[#B8860B] text-center mt-3 text-xs font-mono px-2">
+                {(error as { message: string }).message}
+              </Text>
+            ) : null}
+            <Pressable
+              onPress={() => {
+                void refetch();
+              }}
+              disabled={isFetching}
+              className="mt-6 flex-row items-center px-6 py-3 rounded-full bg-[#C9A227]"
+            >
+              <RefreshCw size={18} color="#FFFFFF" />
+              <Text className="text-white font-semibold ml-2">{isFetching ? 'Retrying…' : 'Try again'}</Text>
+            </Pressable>
+          </View>
+        ) : isLoading ? (
           <View className="items-center py-20">
             <ActivityIndicator size="large" color="#C9A227" />
             <Text className="text-[#8B8B8B] mt-4">Loading sake...</Text>
@@ -218,10 +271,11 @@ export default function ExploreScreen() {
                         className="rounded-2xl overflow-hidden mb-2"
                         style={{ backgroundColor: '#F5EED9', height: 180 }}
                       >
-                        <Image
+                        <ExpoImage
                           source={{ uri: sake.labelImageUrl }}
-                          className="w-full h-full"
-                          resizeMode="cover"
+                          style={{ width: '100%', height: '100%' }}
+                          contentFit="cover"
+                          transition={150}
                         />
                       </View>
                       <Text className="text-[#1a1a1a] font-bold text-sm" numberOfLines={1}>
@@ -284,10 +338,11 @@ export default function ExploreScreen() {
                         style={{ backgroundColor: '#F5EED9', height: 180 }}
                       >
                         {scan.imageUri ? (
-                          <Image
+                          <ExpoImage
                             source={{ uri: scan.imageUri }}
-                            className="w-full h-full"
-                            resizeMode="cover"
+                            style={{ width: '100%', height: '100%' }}
+                            contentFit="cover"
+                            transition={150}
                           />
                         ) : (
                           <View className="flex-1 items-center justify-center">
@@ -312,7 +367,7 @@ export default function ExploreScreen() {
               <View className="px-5 mb-6">
                 <View className="flex-row justify-between items-center mb-4">
                   <Text className="text-lg font-bold text-[#1a1a1a]">Trending This Week</Text>
-                  <Pressable>
+                  <Pressable onPress={handleSeeAllCatalog} hitSlop={8}>
                     <Text className="text-[#C9A227] font-medium">See All</Text>
                   </Pressable>
                 </View>
@@ -328,10 +383,11 @@ export default function ExploreScreen() {
                         className="rounded-2xl overflow-hidden mb-2"
                         style={{ backgroundColor: '#F5EED9', height: 180 }}
                       >
-                        <Image
+                        <ExpoImage
                           source={{ uri: sake.labelImageUrl }}
-                          className="w-full h-full"
-                          resizeMode="cover"
+                          style={{ width: '100%', height: '100%' }}
+                          contentFit="cover"
+                          transition={150}
                         />
                       </View>
                       <Text className="text-[#1a1a1a] font-bold text-base" numberOfLines={1}>{sake.name}</Text>
@@ -350,7 +406,7 @@ export default function ExploreScreen() {
               <View className="px-5 mb-6">
                 <View className="flex-row justify-between items-center mb-4">
                   <Text className="text-lg font-bold text-[#1a1a1a]">New Arrivals</Text>
-                  <Pressable>
+                  <Pressable onPress={handleSeeAllCatalog} hitSlop={8}>
                     <Text className="text-[#C9A227] font-medium">See All</Text>
                   </Pressable>
                 </View>
@@ -367,10 +423,11 @@ export default function ExploreScreen() {
                         className="rounded-2xl overflow-hidden mb-2"
                         style={{ backgroundColor: '#F5EED9', height: 140 }}
                       >
-                        <Image
+                        <ExpoImage
                           source={{ uri: sake.labelImageUrl }}
-                          className="w-full h-full"
-                          resizeMode="cover"
+                          style={{ width: '100%', height: '100%' }}
+                          contentFit="cover"
+                          transition={150}
                         />
                       </View>
                       <Text className="text-[#1a1a1a] font-semibold text-sm" numberOfLines={1}>
@@ -387,7 +444,7 @@ export default function ExploreScreen() {
               <View className="px-5 mb-6">
                 <View className="flex-row justify-between items-center mb-4">
                   <Text className="text-lg font-bold text-[#1a1a1a]">Top Rated in Niigata</Text>
-                  <Pressable>
+                  <Pressable onPress={handleSeeAllNiigata} hitSlop={8}>
                     <Text className="text-[#C9A227] font-medium">See All</Text>
                   </Pressable>
                 </View>
@@ -406,10 +463,11 @@ export default function ExploreScreen() {
                         className="w-14 h-14 rounded-xl overflow-hidden"
                         style={{ backgroundColor: '#F5EED9' }}
                       >
-                        <Image
+                        <ExpoImage
                           source={{ uri: sake.labelImageUrl }}
-                          className="w-full h-full"
-                          resizeMode="cover"
+                          style={{ width: '100%', height: '100%' }}
+                          contentFit="cover"
+                          transition={150}
                         />
                       </View>
                       <View className="flex-1 ml-3">

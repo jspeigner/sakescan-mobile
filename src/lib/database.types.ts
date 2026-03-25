@@ -54,8 +54,7 @@ export interface Database {
           alcohol_percentage: number | null;
           smv: number | null;
           acidity: number | null;
-          label_image_url: string | null;
-          bottle_image_url: string | null;
+          image_url: string | null;
           average_rating: number | null;
           total_ratings: number;
           created_at: string;
@@ -76,8 +75,7 @@ export interface Database {
           alcohol_percentage?: number | null;
           smv?: number | null;
           acidity?: number | null;
-          label_image_url?: string | null;
-          bottle_image_url?: string | null;
+          image_url?: string | null;
           average_rating?: number | null;
           total_ratings?: number;
           created_at?: string;
@@ -98,8 +96,7 @@ export interface Database {
           alcohol_percentage?: number | null;
           smv?: number | null;
           acidity?: number | null;
-          label_image_url?: string | null;
-          bottle_image_url?: string | null;
+          image_url?: string | null;
           average_rating?: number | null;
           total_ratings?: number;
           created_at?: string;
@@ -185,8 +182,23 @@ export interface Database {
         };
       };
     };
+    Functions: {
+      list_breweries_catalog: {
+        Args: { p_limit?: number; p_offset?: number };
+        Returns: {
+          name: string;
+          region: string;
+          sake_count: number;
+          avg_rating: number | null;
+          thumbnail_image_url: string | null;
+        }[];
+      };
+    };
   };
 }
+
+export type BreweryCatalogRow =
+  Database['public']['Functions']['list_breweries_catalog']['Returns'][number];
 
 // Convenience types
 export type User = Database['public']['Tables']['users']['Row'];
@@ -201,11 +213,11 @@ export interface SakeWithRatings extends Sake {
 }
 
 export interface ScanWithSake extends Scan {
-  sake?: Pick<Sake, 'id' | 'name' | 'brewery' | 'type' | 'label_image_url' | 'average_rating'> | null;
+  sake?: Pick<Sake, 'id' | 'name' | 'brewery' | 'type' | 'image_url' | 'average_rating'> | null;
 }
 
 export interface RatingWithSake extends Rating {
-  sake?: Pick<Sake, 'name' | 'brewery' | 'type' | 'label_image_url'>;
+  sake?: Pick<Sake, 'name' | 'brewery' | 'type' | 'image_url'>;
 }
 
 export interface RatingWithUser extends Rating {
@@ -213,7 +225,7 @@ export interface RatingWithUser extends Rating {
 }
 
 export interface FavoriteWithSake extends Favorite {
-  sake?: Pick<Sake, 'name' | 'brewery' | 'type' | 'label_image_url' | 'average_rating'>;
+  sake?: Pick<Sake, 'name' | 'brewery' | 'type' | 'image_url' | 'average_rating'>;
 }
 
 // API response types

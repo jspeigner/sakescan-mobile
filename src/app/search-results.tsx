@@ -5,6 +5,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useSearchSake, useSakeList } from '@/lib/supabase-hooks';
+import { resolveSakeImageUrl, FALLBACK_SAKE_LABEL_URL } from '@/lib/supabase';
 import type { Sake as SupabaseSake } from '@/lib/database.types';
 
 // Helper to map Supabase sake to display format
@@ -15,7 +16,7 @@ function mapSupabaseSake(sake: SupabaseSake) {
     brewery: sake.brewery ?? 'Unknown',
     type: sake.type ?? 'Other',
     avgRating: sake.average_rating ?? 0,
-    labelImageUrl: sake.label_image_url ?? 'https://images.unsplash.com/photo-1589464835340-c5c07fbe5b8e?w=600&h=800&fit=crop',
+    labelImageUrl: resolveSakeImageUrl(sake.image_url) ?? FALLBACK_SAKE_LABEL_URL,
     region: sake.region ?? sake.prefecture ?? '',
     polishingRatio: sake.polishing_ratio,
     smv: sake.smv,

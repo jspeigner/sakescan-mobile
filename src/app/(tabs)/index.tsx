@@ -1,13 +1,17 @@
-import { Text, View, Pressable, ScrollView, Image, ActivityIndicator, Alert } from 'react-native';
+import { Text, View, Pressable, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { Camera, Star, ScanLine, User } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/lib/auth-context';
+import { useTheme } from '@/lib/theme-context';
 import { useUserScans, useSakeList } from '@/lib/supabase-hooks';
+import { resolveSakeImageUrl, FALLBACK_SAKE_LABEL_URL } from '@/lib/supabase';
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
   const { user, session, isGuest } = useAuth();
 
   // Fetch user's recent scans from Supabase
@@ -24,7 +28,7 @@ export default function HomeScreen() {
       id: scan.sake_id!,
       name: scan.sake?.name ?? 'Unknown',
       brewery: scan.sake?.brewery ?? 'Unknown',
-      labelImageUrl: scan.sake?.label_image_url ?? 'https://images.unsplash.com/photo-1589464835340-c5c07fbe5b8e?w=600&h=800&fit=crop',
+      labelImageUrl: resolveSakeImageUrl(scan.sake?.image_url) ?? FALLBACK_SAKE_LABEL_URL,
       avgRating: 0, // Would need to fetch from sake table
     })) ?? [];
 
@@ -35,7 +39,7 @@ export default function HomeScreen() {
         id: sake.id,
         name: sake.name,
         brewery: sake.brewery,
-        labelImageUrl: sake.label_image_url ?? 'https://images.unsplash.com/photo-1589464835340-c5c07fbe5b8e?w=600&h=800&fit=crop',
+        labelImageUrl: resolveSakeImageUrl(sake.image_url) ?? FALLBACK_SAKE_LABEL_URL,
         avgRating: sake.average_rating ?? 0,
       }));
 
@@ -66,7 +70,7 @@ export default function HomeScreen() {
   const isLoading = scansLoading || sakeLoading;
 
   return (
-    <View className="flex-1 bg-[#FAFAF8]" style={{ paddingTop: insets.top }}>
+    <View className="flex-1" style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top }}>
       <ScrollView
         className="flex-1"
         showsVerticalScrollIndicator={false}
@@ -74,15 +78,19 @@ export default function HomeScreen() {
       >
         {/* Header */}
         <View className="flex-row items-center justify-between px-5 py-4">
-          <Text style={{ fontFamily: 'serif', fontSize: 28, fontWeight: '600', color: '#1a1a1a' }}>
+          <Text style={{ fontFamily: 'serif', fontSize: 28, fontWeight: '600', color: colors.text }}>
             SakeScan
           </Text>
           <Pressable onPress={() => router.push('/profile')}>
             <View
               className="w-11 h-11 rounded-full items-center justify-center"
-              style={{ backgroundColor: '#F5EED9', borderWidth: 2, borderColor: '#F5F0E8' }}
+              style={{
+                backgroundColor: colors.primaryLight,
+                borderWidth: 2,
+                borderColor: colors.borderLight,
+              }}
             >
-              <User size={20} color="#C9A227" />
+              <User size={20} color={colors.primary} />
             </View>
           </Pressable>
         </View>
@@ -96,20 +104,22 @@ export default function HomeScreen() {
               width: 220,
               height: 220,
               borderRadius: 110,
-              backgroundColor: '#FAF8F3',
+              backgroundColor: colors.brandRed,
               alignItems: 'center',
               justifyContent: 'center',
-              borderWidth: 1,
-              borderColor: '#E8E4D9',
-              shadowColor: '#D4C9A8',
+              borderWidth: 0,
+              shadowColor: colors.brandRed,
               shadowOffset: { width: 0, height: 8 },
-              shadowOpacity: 0.3,
+              shadowOpacity: 0.35,
               shadowRadius: 24,
               elevation: 8,
             }}
           >
-            <Camera size={42} color="#1a1a1a" strokeWidth={1.5} />
-            <Text className="text-[#1a1a1a] text-sm font-semibold tracking-widest mt-4">
+            <Camera size={42} color="#FFFFFF" strokeWidth={1.5} />
+            <Text
+              className="text-sm font-semibold tracking-widest mt-4"
+              style={{ color: '#FFFFFF' }}
+            >
               SCAN LABEL
             </Text>
           </Pressable>
@@ -117,7 +127,7 @@ export default function HomeScreen() {
 
         {/* Instructions */}
         <View className="px-8 pb-10">
-          <Text className="text-center text-[#6B6B6B] text-base leading-6">
+          <Text className="text-center text-base leading-6" style={{ color: colors.textSecondary }}>
             Point your camera at any sake label to{'\n'}learn more about the brewery, profile, and{'\n'}pairings.
           </Text>
         </View>
@@ -125,11 +135,21 @@ export default function HomeScreen() {
         {/* Recently Scanned / Popular Section */}
         <View className="mt-4">
           <View className="flex-row items-center justify-between px-5 mb-4">
-            <Text className="text-xl font-bold text-[#1a1a1a]">
+            <Text className="text-xl font-bold" style={{ color: colors.text }}>
               {recentlyScanned.length > 0 ? 'Recently Scanned' : 'Popular Sake'}
             </Text>
-            <Pressable onPress={() => router.push('/(tabs)/explore')}>
-              <Text className="text-[#C9A227] font-semibold">
+            <Pressable
+              hitSlop={8}
+              onPress={async () => {
+                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                if (recentlyScanned.length > 0) {
+                  router.push('/scan-history');
+                } else {
+                  router.push('/search-results');
+                }
+              }}
+            >
+              <Text className="font-semibold" style={{ color: colors.primary }}>
                 See all
               </Text>
             </Pressable>
@@ -137,15 +157,15 @@ export default function HomeScreen() {
 
           {isLoading ? (
             <View className="items-center py-10">
-              <ActivityIndicator size="large" color="#C9A227" />
+              <ActivityIndicator size="large" color={colors.primary} />
             </View>
           ) : displaySake.length === 0 ? (
             <View className="items-center py-10 px-5">
-              <ScanLine size={48} color="#C9A227" />
-              <Text className="text-[#1a1a1a] font-semibold text-lg mt-4">
+              <ScanLine size={48} color={colors.primary} />
+              <Text className="font-semibold text-lg mt-4" style={{ color: colors.text }}>
                 No scans yet
               </Text>
-              <Text className="text-[#8B8B8B] text-center mt-2">
+              <Text className="text-center mt-2" style={{ color: colors.textTertiary }}>
                 Start scanning sake labels to build your history
               </Text>
             </View>
@@ -166,20 +186,21 @@ export default function HomeScreen() {
                   <View
                     className="rounded-2xl overflow-hidden mb-3"
                     style={{
-                      backgroundColor: '#F5F3EE',
+                      backgroundColor: colors.surfaceSecondary,
                       height: 200,
                     }}
                   >
-                    <Image
+                    <ExpoImage
                       source={{ uri: sake.labelImageUrl }}
-                      className="w-full h-full"
-                      resizeMode="cover"
+                      style={{ width: '100%', height: 200 }}
+                      contentFit="cover"
+                      transition={200}
                     />
                   </View>
-                  <Text className="text-[#1a1a1a] font-bold text-base mb-1" numberOfLines={1}>
+                  <Text className="font-bold text-base mb-1" numberOfLines={1} style={{ color: colors.text }}>
                     {sake.name}
                   </Text>
-                  <Text className="text-[#8B8B8B] text-sm mb-2" numberOfLines={1}>
+                  <Text className="text-sm mb-2" numberOfLines={1} style={{ color: colors.textTertiary }}>
                     {sake.brewery}
                   </Text>
                   {sake.avgRating > 0 && (
@@ -188,8 +209,8 @@ export default function HomeScreen() {
                         <Star
                           key={star}
                           size={14}
-                          fill={star <= Math.floor(sake.avgRating) ? '#C9A227' : 'transparent'}
-                          color="#C9A227"
+                          fill={star <= Math.floor(sake.avgRating) ? colors.primary : 'transparent'}
+                          color={colors.primary}
                           strokeWidth={1.5}
                         />
                       ))}
