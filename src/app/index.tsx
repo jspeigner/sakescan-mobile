@@ -10,13 +10,12 @@ export default function Index() {
   const navReady = Boolean(rootNavigationState?.key);
 
   useEffect(() => {
+    console.log('[Index] state check — isLoading:', isLoading, 'navReady:', navReady, 'user:', !!user, 'isGuest:', isGuest);
     if (isLoading || !navReady || hasNavigated.current) return;
     hasNavigated.current = true;
-    if (user || isGuest) {
-      router.replace('/(tabs)');
-    } else {
-      router.replace('/welcome');
-    }
+    const dest = (user || isGuest) ? '/(tabs)' : '/welcome';
+    console.log('[Index] navigating to:', dest);
+    router.replace(dest as Parameters<typeof router.replace>[0]);
   }, [user, isGuest, isLoading, navReady]);
 
   return (

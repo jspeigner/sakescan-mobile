@@ -1,8 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import Animated, { useSharedValue, withTiming, useAnimatedStyle } from 'react-native-reanimated';
 import {
   useFonts,
   NotoSerifJP_400Regular,
@@ -33,7 +34,10 @@ export const unstable_settings = {
   initialRouteName: 'index',
 };
 
+// Tell the native storyboard splash to hide as early as possible.
+// We replace JS-controlled splash gating with a React overlay (see SplashOverlay).
 SplashScreen.preventAutoHideAsync().catch(() => {});
+SplashScreen.hideAsync().catch(() => {});
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -139,15 +143,52 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
   );
 }
 
-function AppContent() {
-  const { isLoading } = useAuth();
-  const { isDarkMode } = useTheme();
+/**
+ * React-layer splash overlay — replaces JS-controlled expo-splash-screen.
+ * Covers the entire screen with the app background colour until fonts + auth
+ * are both ready, then fades out in 200 ms. This avoids the Fabric race
+ * condition where SplashScreen.hideAsync() can become a no-op.
+ */
+function SplashOverlay({ ready }: { ready: boolean }) {
+  const opacity = useSharedValue(1);
+  const [hidden, setHidden] = useState(false);
 
   useEffect(() => {
-    if (!isLoading) {
-      SplashScreen.hideAsync().catch(() => {});
+    if (ready && !hidden) {
+      console.log('[SplashOverlay] fading out');
+      opacity.value = withTiming(0, { duration: 200 });
+      const t = setTimeout(() => setHidden(true), 210);
+      return () => clearTimeout(t);
     }
-  }, [isLoading]);
+  }, [ready, hidden, opacity]);
+
+  const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
+
+  if (hidden) return null;
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        {
+          position: 'absolute',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: '#FAFAF8',
+          zIndex: 9999,
+        },
+        style,
+      ]}
+    />
+  );
+}
+
+function AppContent({ fontsReady }: { fontsReady: boolean }) {
+  const { isLoading } = useAuth();
+  const { isDarkMode } = useTheme();
+  const appReady = fontsReady && !isLoading;
+
+  useEffect(() => {
+    console.log('[AppContent] isLoading:', isLoading, 'fontsReady:', fontsReady, 'appReady:', appReady);
+  }, [isLoading, fontsReady, appReady]);
 
   const navigationScheme = isDarkMode ? 'dark' : 'light';
 
@@ -155,6 +196,7 @@ function AppContent() {
     <>
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
       <RootLayoutNav colorScheme={navigationScheme} />
+      <SplashOverlay ready={appReady} />
     </>
   );
 }
@@ -172,11 +214,24 @@ export default function RootLayout() {
     ZenKakuGothicNew_900Black,
   });
 
+  // If useFonts hangs silently (no error, never resolves), unblock the UI after 3 s
+  const [fontTimeout, setFontTimeout] = useState(false);
   useEffect(() => {
+    const t = setTimeout(() => {
+      if (!fontsLoaded && !fontError) {
+        console.warn('[RootLayout] Font loading timed out — proceeding without custom fonts');
+        setFontTimeout(true);
+      }
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [fontsLoaded, fontError]);
+
+  useEffect(() => {
+    console.log('[RootLayout] fontsLoaded:', fontsLoaded, 'fontError:', !!fontError);
     if (fontError) {
       console.error('[RootLayout] Font loading failed:', fontError);
     }
-  }, [fontError]);
+  }, [fontsLoaded, fontError]);
 
   useEffect(() => {
     const parsePairs = (str: string): Record<string, string> => {
@@ -227,9 +282,7 @@ export default function RootLayout() {
     return () => subscription.remove();
   }, []);
 
-  if (!fontsLoaded && !fontError) {
-    return null;
-  }
+  const fontsReady = fontsLoaded || !!fontError || fontTimeout;
 
   return (
     <View style={{ flex: 1 }}>
@@ -252,7 +305,7 @@ export default function RootLayout() {
                 <CustomThemeProvider>
                   <NotificationProvider>
                     <GestureHandlerRootView style={{ flex: 1 }}>
-                      <AppContent />
+                      <AppContent fontsReady={fontsReady} />
                     </GestureHandlerRootView>
                   </NotificationProvider>
                 </CustomThemeProvider>
