@@ -1,6 +1,17 @@
 import { useState, useRef, useEffect } from 'react';
 import { Text, View, Pressable, StyleSheet } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withRepeat,
+  withSequence,
+  withSpring,
+  Easing,
+  interpolate,
+  cancelAnimation,
+} from 'react-native-reanimated';
 import { ChevronLeft, Info, Image as ImageIcon, Zap } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +19,9 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { scanSakeLabel } from '@/lib/openai-scan';
+
+// Height of the scan frame (must match styles.frame height)
+const FRAME_HEIGHT = 380;
 
 export default function CameraScreen() {
   const insets = useSafeAreaInsets();
@@ -18,24 +32,92 @@ export default function CameraScreen() {
   const [flashOn, setFlashOn] = useState(false);
   const cameraRef = useRef<CameraView>(null);
 
+  // Reanimated values
+  const scanLineY = useSharedValue(0);          // sweeping scan line position (0-1)
+  const cornerOpacity = useSharedValue(1);       // corner accent pulse
+  const progressWidth = useSharedValue(0);       // progress bar fill
+  const frameGlow = useSharedValue(0);           // frame border brightness
+  const successFlash = useSharedValue(0);        // white flash on success
+
   useEffect(() => {
     if (isScanning) {
-      // Update progress state for display
+      // Sweep the scan line top→bottom→top on loop (2 s per pass)
+      scanLineY.value = withRepeat(
+        withSequence(
+          withTiming(1, { duration: 1800, easing: Easing.inOut(Easing.quad) }),
+          withTiming(0, { duration: 1800, easing: Easing.inOut(Easing.quad) }),
+        ),
+        -1,
+        false,
+      );
+      // Pulse corner accents
+      cornerOpacity.value = withRepeat(
+        withSequence(
+          withTiming(0.35, { duration: 700 }),
+          withTiming(1, { duration: 700 }),
+        ),
+        -1,
+        false,
+      );
+      // Gentle frame glow pulse
+      frameGlow.value = withRepeat(
+        withSequence(
+          withTiming(1, { duration: 900 }),
+          withTiming(0.4, { duration: 900 }),
+        ),
+        -1,
+        false,
+      );
+    } else {
+      cancelAnimation(scanLineY);
+      cancelAnimation(cornerOpacity);
+      cancelAnimation(frameGlow);
+      scanLineY.value = withTiming(0, { duration: 200 });
+      cornerOpacity.value = withTiming(1, { duration: 200 });
+      frameGlow.value = withTiming(0, { duration: 200 });
+    }
+  }, [isScanning, scanLineY, cornerOpacity, frameGlow]);
+
+  // Drive animated progress bar from state
+  useEffect(() => {
+    progressWidth.value = withTiming(scanProgress / 100, { duration: 120 });
+  }, [scanProgress, progressWidth]);
+
+  // Progress ticker
+  useEffect(() => {
+    if (isScanning) {
       const interval = setInterval(() => {
         setScanProgress((prev) => {
-          if (prev >= 100) {
-            clearInterval(interval);
-            return 100;
-          }
-          return prev + 5;
+          if (prev >= 95) { clearInterval(interval); return 95; }
+          return prev + 3;
         });
-      }, 100);
-
+      }, 150);
       return () => clearInterval(interval);
     } else {
       setScanProgress(0);
     }
   }, [isScanning]);
+
+  // Animated styles
+  const scanLineStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: interpolate(scanLineY.value, [0, 1], [0, FRAME_HEIGHT - 3]) }],
+    opacity: interpolate(scanLineY.value, [0, 0.05, 0.95, 1], [0, 1, 1, 0]),
+  }));
+
+  const cornerStyle = useAnimatedStyle(() => ({ opacity: cornerOpacity.value }));
+
+  const progressBarStyle = useAnimatedStyle(() => ({
+    width: `${progressWidth.value * 100}%` as `${number}%`,
+  }));
+
+  const frameStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(frameGlow.value, [0, 1], [0.6, 1]),
+  }));
+
+  const flashStyle = useAnimatedStyle(() => ({
+    opacity: successFlash.value,
+    pointerEvents: successFlash.value > 0 ? 'none' : 'none',
+  }));
 
   if (!permission) {
     return <View style={styles.container} />;
@@ -74,7 +156,14 @@ export default function CameraScreen() {
         console.log('✅ Successfully scanned:', result.sake.name);
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-        // Navigate to scan result screen with the sake data
+        // Success flash then navigate
+        setScanProgress(100);
+        successFlash.value = withSequence(
+          withTiming(0.6, { duration: 80 }),
+          withTiming(0, { duration: 300 }),
+        );
+        await new Promise(r => setTimeout(r, 350));
+
         router.replace({
           pathname: '/scan-result',
           params: {
@@ -215,35 +304,42 @@ export default function CameraScreen() {
 
         {/* Scanning Frame */}
         <View style={styles.frameContainer}>
-          <View style={styles.frame}>
-            {/* Dashed border effect using 4 sides */}
+          <Animated.View style={[styles.frame, frameStyle]}>
+            {/* Dashed border effect */}
             <View style={[styles.frameBorder, styles.frameTop]} />
             <View style={[styles.frameBorder, styles.frameRight]} />
             <View style={[styles.frameBorder, styles.frameBottom]} />
             <View style={[styles.frameBorder, styles.frameLeft]} />
 
-            {/* Corner accents */}
-            <View style={[styles.cornerAccent, styles.cornerTL]} />
-            <View style={[styles.cornerAccent, styles.cornerTR]} />
-            <View style={[styles.cornerAccent, styles.cornerBL]} />
-            <View style={[styles.cornerAccent, styles.cornerBR]} />
-          </View>
+            {/* Corner accents — pulse when scanning */}
+            <Animated.View style={[styles.cornerAccent, styles.cornerTL, cornerStyle]} />
+            <Animated.View style={[styles.cornerAccent, styles.cornerTR, cornerStyle]} />
+            <Animated.View style={[styles.cornerAccent, styles.cornerBL, cornerStyle]} />
+            <Animated.View style={[styles.cornerAccent, styles.cornerBR, cornerStyle]} />
+
+            {/* Sweeping scan line — only visible while scanning */}
+            {isScanning && (
+              <Animated.View style={[styles.scanLine, scanLineStyle]} />
+            )}
+          </Animated.View>
         </View>
 
         {/* Instructions and Progress */}
         <View style={styles.instructionsContainer}>
-          <Text style={styles.instructionText}>Position label within frame</Text>
+          <Text style={styles.instructionText}>
+            {isScanning ? 'Analyzing with AI...' : 'Position label within frame'}
+          </Text>
 
           {isScanning && (
-            <View style={styles.progressRow}>
-              <View style={styles.progressDot}>
-                <View style={styles.progressDotInner} />
-              </View>
-              <Text style={styles.analyzingText}>Analyzing with AI...</Text>
+            <View style={styles.progressBarTrack}>
+              <Animated.View style={[styles.progressBarFill, progressBarStyle]} />
               <Text style={styles.progressPercent}>{scanProgress}%</Text>
             </View>
           )}
         </View>
+
+        {/* Full-screen white flash on success */}
+        <Animated.View style={[styles.successFlash, flashStyle]} pointerEvents="none" />
 
         {/* Bottom Controls */}
         <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 20 }]}>
@@ -422,35 +518,41 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginBottom: 12,
   },
-  progressRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  scanLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: '#C9A227',
+    shadowColor: '#C9A227',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 6,
   },
-  progressDot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: 'rgba(201, 162, 39, 0.3)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
+  progressBarTrack: {
+    width: 220,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    marginTop: 12,
+    overflow: 'hidden',
+    position: 'relative',
   },
-  progressDotInner: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 2,
     backgroundColor: '#C9A227',
   },
-  analyzingText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '500',
-  },
   progressPercent: {
-    color: '#8B8B8B',
-    fontSize: 14,
-    marginLeft: 'auto',
-    paddingLeft: 80,
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 11,
+    marginTop: 6,
+    letterSpacing: 0.5,
+  },
+  successFlash: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#FFFFFF',
   },
   bottomBar: {
     flexDirection: 'row',
