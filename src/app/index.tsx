@@ -18,6 +18,20 @@ export default function Index() {
     router.replace(dest as Parameters<typeof router.replace>[0]);
   }, [user, isGuest, isLoading, navReady]);
 
+  // Safety net: if navReady never becomes true (can happen on New Arch in production),
+  // force navigation after 3 s regardless.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (hasNavigated.current) return;
+      console.warn('[Index] navReady timeout — forcing navigation');
+      hasNavigated.current = true;
+      const dest = (user || isGuest) ? '/(tabs)' : '/welcome';
+      router.replace(dest as Parameters<typeof router.replace>[0]);
+    }, 3000);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FAFAF8' }}>
       <ActivityIndicator size="large" color="#C9A227" />

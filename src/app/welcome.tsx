@@ -104,6 +104,10 @@ export default function WelcomeScreen() {
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isSigningInGoogle, setIsSigningInGoogle] = useState(false);
 
+  useEffect(() => {
+    console.log('[Welcome] mounted — insets:', JSON.stringify(insets));
+  }, [insets]);
+
   // Watch for successful authentication and navigate to tabs
   useEffect(() => {
     if (user) {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Pressable, View } from 'react-native';
 import { Tabs, router } from 'expo-router';
 import { Compass, Home, Heart, Camera, Building2 } from 'lucide-react-native';
@@ -42,6 +42,11 @@ export default function TabLayout() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const tabBarHeight = 56 + Math.max(insets.bottom, 10);
+
+  useEffect(() => {
+    console.log('[TabLayout] mounted');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <Tabs

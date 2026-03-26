@@ -2,6 +2,7 @@
   "expo": {
     "name": "SakeScan",
     "slug": "sakescan",
+    "scheme": "sakescan",
     "version": "2.0.4",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",

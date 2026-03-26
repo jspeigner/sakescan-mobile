@@ -14,6 +14,11 @@ export default function HomeScreen() {
   const { colors } = useTheme();
   const { user, session, isGuest } = useAuth();
 
+  useEffect(() => {
+    console.log('[HomeScreen] mounted');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Fetch user's recent scans from Supabase
   const { data: userScans, isLoading: scansLoading } = useUserScans(user?.id);
 

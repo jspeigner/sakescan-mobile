@@ -70,7 +70,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
         />
         <Stack.Screen
           name="welcome"
-          options={{ headerShown: false, animation: 'fade' }}
+          options={{ headerShown: false, animation: 'none' }}
         />
         <Stack.Screen
           name="auth"
@@ -80,7 +80,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
           name="reset-password"
           options={{ headerShown: false, animation: 'slide_from_right' }}
         />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false, animation: 'none' }} />
         <Stack.Screen
           name="camera"
           options={{
