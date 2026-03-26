@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Text, View, Pressable, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { Camera, Star, ScanLine, User } from 'lucide-react-native';
