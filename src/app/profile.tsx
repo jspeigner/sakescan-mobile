@@ -244,7 +244,16 @@ export default function ProfileScreen() {
         contentContainerStyle={{ paddingBottom: 100 }}
       >
         {/* Header */}
-        <View className="px-5 py-4">
+        <View className="px-5 py-4 flex-row items-center">
+          <Pressable
+            onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.back(); }}
+            style={{ marginRight: 12, padding: 4 }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <View style={{ transform: [{ rotate: '180deg' }] }}>
+              <ChevronRight size={28} color={colors.text} />
+            </View>
+          </Pressable>
           <Text style={{ fontFamily: 'serif', fontSize: 28, fontWeight: '600', color: colors.text }}>
             {t('profile.title')}
           </Text>
