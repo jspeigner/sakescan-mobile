@@ -36,6 +36,8 @@
       "typedRoutes": true
     },
     "splash": {
+      "image": "./icon.png",
+      "resizeMode": "contain",
       "backgroundColor": "#FAFAF8"
     },
     "icon": "./icon.png",
