@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { Text, View, Pressable, StyleSheet } from 'react-native';
+import { Text, View, Pressable, StyleSheet, Platform } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import Animated, {
   useSharedValue,
@@ -291,8 +292,12 @@ export default function CameraScreen() {
 
       {/* Overlay UI - positioned absolutely on top of camera */}
       <View style={styles.overlay}>
-        {/* Header */}
-        <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+        {/* Header — frosted glass */}
+        <BlurView
+          intensity={Platform.OS === 'ios' ? 60 : 100}
+          tint="dark"
+          style={[styles.header, { paddingTop: insets.top + 8 }]}
+        >
           <Pressable onPress={handleClose} style={styles.headerButton}>
             <ChevronLeft size={24} color="#FFFFFF" />
           </Pressable>
@@ -300,7 +305,7 @@ export default function CameraScreen() {
           <Pressable style={styles.headerButton}>
             <Info size={22} color="#FFFFFF" />
           </Pressable>
-        </View>
+        </BlurView>
 
         {/* Scanning Frame */}
         <View style={styles.frameContainer}>
@@ -341,8 +346,12 @@ export default function CameraScreen() {
         {/* Full-screen white flash on success */}
         <Animated.View style={[styles.successFlash, flashStyle]} pointerEvents="none" />
 
-        {/* Bottom Controls */}
-        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 20 }]}>
+        {/* Bottom Controls — frosted glass */}
+        <BlurView
+          intensity={Platform.OS === 'ios' ? 55 : 100}
+          tint="dark"
+          style={[styles.bottomBar, { paddingBottom: insets.bottom + 20 }]}
+        >
           {/* Gallery Button */}
           <Pressable
             style={styles.sideButton}
@@ -372,7 +381,7 @@ export default function CameraScreen() {
           >
             <Zap size={24} color="#FFFFFF" fill={flashOn ? '#FFFFFF' : 'transparent'} />
           </Pressable>
-        </View>
+        </BlurView>
       </View>
     </View>
   );

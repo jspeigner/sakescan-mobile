@@ -56,7 +56,7 @@ export default function SavedScreen() {
     <View className="flex-1 bg-[#FAFAF8]" style={{ paddingTop: insets.top }}>
       {/* Header */}
       <View className="px-5 py-4">
-        <Text style={{ fontFamily: 'serif', fontSize: 28, fontWeight: '600', color: '#1a1a1a' }}>
+        <Text style={{ fontFamily: 'NotoSerifJP_600SemiBold', fontSize: 28, fontWeight: '600', color: '#1a1a1a' }}>
           Saved
         </Text>
         <Text className="text-[#8B8B8B] text-base mt-1">

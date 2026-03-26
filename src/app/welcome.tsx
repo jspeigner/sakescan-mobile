@@ -196,7 +196,7 @@ export default function WelcomeScreen() {
         {/* Title */}
         <Text
           className="mt-8 text-[#1a1a1a]"
-          style={{ fontFamily: 'serif', fontSize: 36, fontWeight: '600' }}
+          style={{ fontFamily: 'NotoSerifJP_600SemiBold', fontSize: 36, fontWeight: '600' }}
         >
           SakeScan
         </Text>

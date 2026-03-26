@@ -8,13 +8,18 @@ import {
   Dimensions,
   ActivityIndicator,
 } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withDelay,
+  Easing,
+} from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import {
   ChevronLeft,
-  Star,
-  Heart,
   Share2,
-  MoreHorizontal,
   Snowflake,
   Home,
   Flame,
@@ -53,6 +58,24 @@ export default function ScanResultScreen({ sakeInfo, imageUri }: ScanResultScree
   const insets = useSafeAreaInsets();
   const [isSaving, setIsSaving] = useState(false);
   const addScan = useScanHistoryStore((s) => s.addScan);
+
+  // Entrance animations — component-level only, no Stack animation prop involved
+  const heroOpacity = useSharedValue(0);
+  const contentY = useSharedValue(32);
+  const contentOpacity = useSharedValue(0);
+
+  useEffect(() => {
+    heroOpacity.value = withTiming(1, { duration: 400, easing: Easing.out(Easing.quad) });
+    contentY.value = withDelay(200, withTiming(0, { duration: 450, easing: Easing.out(Easing.cubic) }));
+    contentOpacity.value = withDelay(200, withTiming(1, { duration: 450 }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const heroStyle = useAnimatedStyle(() => ({ opacity: heroOpacity.value }));
+  const contentStyle = useAnimatedStyle(() => ({
+    opacity: contentOpacity.value,
+    transform: [{ translateY: contentY.value }],
+  }));
 
   const createSake = useCreateSake();
   const createScan = useCreateScan();
@@ -127,56 +150,74 @@ export default function ScanResultScreen({ sakeInfo, imageUri }: ScanResultScree
   };
 
   return (
-    <View className="flex-1 bg-white">
-      {/* Header */}
+    <View style={{ flex: 1, backgroundColor: '#FAFAF8' }}>
+      {/* Floating header — sits over the hero */}
       <View
-        className="absolute top-0 left-0 right-0 z-10 flex-row items-center justify-between px-5 py-3"
-        style={{ paddingTop: insets.top + 8 }}
+        style={{
+          position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10,
+          flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+          paddingHorizontal: 20, paddingTop: insets.top + 8, paddingBottom: 12,
+        }}
       >
-        <Pressable onPress={() => router.back()} className="p-1">
-          <ChevronLeft size={24} color="#1a1a1a" />
+        <Pressable
+          onPress={() => router.back()}
+          style={{
+            width: 38, height: 38, borderRadius: 19,
+            backgroundColor: 'rgba(255,255,255,0.85)',
+            alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <ChevronLeft size={22} color="#1a1a1a" />
         </Pressable>
-        <View className="flex-row items-center">
-          <Text className="text-lg font-semibold text-[#1a1a1a]">Scan Result</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           {isSaving && (
-            <ActivityIndicator size="small" color="#C9A227" style={{ marginLeft: 8 }} />
+            <ActivityIndicator size="small" color="#C9A227" style={{ marginRight: 8 }} />
           )}
         </View>
-        <Pressable onPress={handleShare} className="p-1">
-          <Share2 size={20} color="#1a1a1a" />
+        <Pressable
+          onPress={handleShare}
+          style={{
+            width: 38, height: 38, borderRadius: 19,
+            backgroundColor: 'rgba(255,255,255,0.85)',
+            alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <Share2 size={18} color="#1a1a1a" />
         </Pressable>
       </View>
 
       <ScrollView
-        className="flex-1"
+        style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
       >
-        {/* Hero Image */}
-        <View
-          className="w-full overflow-hidden"
-          style={{ height: 400, backgroundColor: '#D9B280' }}
-        >
+        {/* Hero Image with gradient overlay */}
+        <Animated.View style={[{ width: '100%', overflow: 'hidden', height: 420, backgroundColor: '#E8D5B0' }, heroStyle]}>
           {imageUri ? (
             <Image
               source={{ uri: imageUri }}
               style={{ width: '100%', height: '100%' }}
-              resizeMode="contain"
+              resizeMode="cover"
             />
           ) : (
-            <View className="flex-1 items-center justify-center">
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
               <Wine size={80} color="#C9A227" />
             </View>
           )}
-        </View>
+          {/* Bottom gradient fade into page background */}
+          <LinearGradient
+            colors={['transparent', 'rgba(250,250,248,0.6)', '#FAFAF8']}
+            style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 160 }}
+          />
+        </Animated.View>
 
-        {/* Content */}
-        <View className="px-5 pt-6">
+        {/* Content — slides up on mount */}
+        <Animated.View style={[{ paddingHorizontal: 20, paddingTop: 4 }, contentStyle]}>
           {/* Title Section */}
           <View className="mb-2">
             <Text
               className="text-[#1a1a1a]"
-              style={{ fontFamily: 'serif', fontSize: 32, fontWeight: '600' }}
+              style={{ fontFamily: 'NotoSerifJP_600SemiBold', fontSize: 32, fontWeight: '600' }}
             >
               {sakeInfo.name}
             </Text>
@@ -347,7 +388,7 @@ export default function ScanResultScreen({ sakeInfo, imageUri }: ScanResultScree
               </View>
             </View>
           )}
-        </View>
+        </Animated.View>
       </ScrollView>
     </View>
   );

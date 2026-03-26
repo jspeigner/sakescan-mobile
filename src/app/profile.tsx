@@ -254,7 +254,7 @@ export default function ProfileScreen() {
               <ChevronRight size={28} color={colors.text} />
             </View>
           </Pressable>
-          <Text style={{ fontFamily: 'serif', fontSize: 28, fontWeight: '600', color: colors.text }}>
+          <Text style={{ fontFamily: 'NotoSerifJP_600SemiBold', fontSize: 28, fontWeight: '600', color: colors.text }}>
             {t('profile.title')}
           </Text>
         </View>

@@ -78,7 +78,7 @@ export default function ReviewModal() {
             {/* Title */}
             <Text
               className="text-[#1a1a1a] mb-6"
-              style={{ fontFamily: 'serif', fontSize: 24, fontWeight: '600' }}
+              style={{ fontFamily: 'NotoSerifJP_600SemiBold', fontSize: 24, fontWeight: '600' }}
             >
               Rate {sakeName} {sakeType}
             </Text>

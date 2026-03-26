@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, View, StyleSheet, Platform } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { Tabs, router } from 'expo-router';
 import { Compass, Home, Heart, Camera, Building2 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
@@ -54,13 +55,23 @@ export default function TabLayout() {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textTertiary,
         tabBarStyle: {
-          backgroundColor: colors.background,
+          backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.background,
           borderTopColor: colors.border,
-          borderTopWidth: 1,
+          borderTopWidth: StyleSheet.hairlineWidth,
           paddingTop: 6,
           paddingBottom: Math.max(insets.bottom, 10),
           height: tabBarHeight,
+          position: 'absolute',
         },
+        tabBarBackground: Platform.OS === 'ios'
+          ? () => (
+              <BlurView
+                intensity={80}
+                tint={colors.background === '#0a0a0a' ? 'dark' : 'light'}
+                style={StyleSheet.absoluteFill}
+              />
+            )
+          : undefined,
         tabBarItemStyle: {
           flex: 1,
           justifyContent: 'center',

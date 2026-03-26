@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Text,
   View,
@@ -10,6 +10,15 @@ import {
   Alert,
   StyleSheet,
 } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withDelay,
+  withSpring,
+  Easing,
+} from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, router } from 'expo-router';
 import {
@@ -191,6 +200,24 @@ export default function SakeDetailScreen() {
     return count.toString();
   };
 
+  // Component-level entrance animations — does NOT use Stack animation prop
+  const heroOpacity = useSharedValue(0);
+  const contentY = useSharedValue(40);
+  const contentOpacity = useSharedValue(0);
+
+  useEffect(() => {
+    heroOpacity.value = withTiming(1, { duration: 380, easing: Easing.out(Easing.quad) });
+    contentY.value = withDelay(180, withSpring(0, { damping: 18, stiffness: 130 }));
+    contentOpacity.value = withDelay(180, withTiming(1, { duration: 350 }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const heroStyle = useAnimatedStyle(() => ({ opacity: heroOpacity.value }));
+  const contentStyle = useAnimatedStyle(() => ({
+    opacity: contentOpacity.value,
+    transform: [{ translateY: contentY.value }],
+  }));
+
   return (
     <View className="flex-1" style={{ backgroundColor: colors.background }}>
       {/* Header */}
@@ -218,25 +245,28 @@ export default function SakeDetailScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
       >
-        {/* Hero Image - fixed height to prevent overlap (B13) */}
-        <View
-          className="w-full overflow-hidden"
-          style={{ height: 340, backgroundColor: colors.surface }}
+        {/* Hero Image */}
+        <Animated.View
+          style={[{ width: '100%', overflow: 'hidden', height: 340, backgroundColor: colors.surface }, heroStyle]}
         >
           <Image
             source={{ uri: sake.labelImageUrl }}
             style={{ width: '100%', height: '100%' }}
             contentFit="cover"
           />
-        </View>
+          <LinearGradient
+            colors={['transparent', `${colors.background}99`, colors.background]}
+            style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 140 }}
+          />
+        </Animated.View>
 
-        {/* Content — clear separation from hero (B13) */}
-        <View className="px-5 pt-6" style={{ backgroundColor: colors.background }}>
+        {/* Content */}
+        <Animated.View className="px-5 pt-4" style={[{ backgroundColor: colors.background }, contentStyle]}>
           {/* Title Section */}
           <View className="flex-row items-start justify-between mb-2">
             <Text
               className="flex-1 mr-4"
-              style={{ fontFamily: 'serif', fontSize: 32, fontWeight: '600', color: colors.text }}
+              style={{ fontFamily: 'NotoSerifJP_600SemiBold', fontSize: 32, fontWeight: '600', color: colors.text }}
             >
               {sake.name}
             </Text>
@@ -430,7 +460,7 @@ export default function SakeDetailScreen() {
               ))}
             </View>
           )}
-        </View>
+        </Animated.View>
       </ScrollView>
 
       {/* Fixed Bottom Button */}

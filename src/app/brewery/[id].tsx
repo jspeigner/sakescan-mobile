@@ -143,7 +143,7 @@ export default function BreweryScreen() {
         <View className="items-center px-5 pt-4">
           <Text
             className="text-[#1a1a1a] text-center"
-            style={{ fontFamily: 'serif', fontSize: 26, fontWeight: '600' }}
+            style={{ fontFamily: 'NotoSerifJP_600SemiBold', fontSize: 26, fontWeight: '600' }}
           >
             {breweryName}
           </Text>

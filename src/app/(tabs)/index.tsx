@@ -1,5 +1,14 @@
 import { useEffect } from 'react';
 import { Text, View, Pressable, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withDelay,
+  withSpring,
+  Easing,
+} from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Image as ExpoImage } from 'expo-image';
 import { Camera, Star, ScanLine, User } from 'lucide-react-native';
 import { router } from 'expo-router';
@@ -15,10 +24,27 @@ export default function HomeScreen() {
   const { colors } = useTheme();
   const { user, session, isGuest } = useAuth();
 
+  // Entrance animations
+  const headerOpacity = useSharedValue(0);
+  const scanScale = useSharedValue(0.85);
+  const scanOpacity = useSharedValue(0);
+  const listOpacity = useSharedValue(0);
+
   useEffect(() => {
     console.log('[HomeScreen] mounted');
+    headerOpacity.value = withTiming(1, { duration: 350 });
+    scanScale.value = withDelay(150, withSpring(1, { damping: 14, stiffness: 120 }));
+    scanOpacity.value = withDelay(150, withTiming(1, { duration: 300 }));
+    listOpacity.value = withDelay(400, withTiming(1, { duration: 350, easing: Easing.out(Easing.quad) }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const headerStyle = useAnimatedStyle(() => ({ opacity: headerOpacity.value }));
+  const scanStyle = useAnimatedStyle(() => ({
+    opacity: scanOpacity.value,
+    transform: [{ scale: scanScale.value }],
+  }));
+  const listStyle = useAnimatedStyle(() => ({ opacity: listOpacity.value }));
 
   // Fetch user's recent scans from Supabase
   const { data: userScans, isLoading: scansLoading } = useUserScans(user?.id);
@@ -83,14 +109,14 @@ export default function HomeScreen() {
         contentContainerStyle={{ paddingBottom: 100 }}
       >
         {/* Header */}
-        <View className="flex-row items-center justify-between px-5 py-4">
-          <Text style={{ fontFamily: 'serif', fontSize: 28, fontWeight: '600', color: colors.text }}>
+        <Animated.View style={[{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16 }, headerStyle]}>
+          <Text style={{ fontFamily: 'NotoSerifJP_600SemiBold', fontSize: 28, fontWeight: '600', color: colors.text }}>
             SakeScan
           </Text>
           <Pressable onPress={() => router.push('/profile')}>
             <View
-              className="w-11 h-11 rounded-full items-center justify-center"
               style={{
+                width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center',
                 backgroundColor: colors.primaryLight,
                 borderWidth: 2,
                 borderColor: colors.borderLight,
@@ -99,13 +125,17 @@ export default function HomeScreen() {
               <User size={20} color={colors.primary} />
             </View>
           </Pressable>
-        </View>
+        </Animated.View>
 
         {/* Scan Button Area */}
-        <View className="items-center px-5 pt-8 pb-6">
+        <Animated.View style={[{ alignItems: 'center', paddingHorizontal: 20, paddingTop: 32, paddingBottom: 24 }, scanStyle]}>
+          {/* Gradient glow ring behind button */}
+          <LinearGradient
+            colors={[`${colors.brandRed}22`, `${colors.brandRed}00`]}
+            style={{ position: 'absolute', width: 300, height: 300, borderRadius: 150, top: 8 }}
+          />
           <Pressable
             onPress={handleScanPress}
-            className="active:scale-95"
             style={{
               width: 220,
               height: 220,
@@ -113,7 +143,6 @@ export default function HomeScreen() {
               backgroundColor: colors.brandRed,
               alignItems: 'center',
               justifyContent: 'center',
-              borderWidth: 0,
               shadowColor: colors.brandRed,
               shadowOffset: { width: 0, height: 8 },
               shadowOpacity: 0.35,
@@ -122,24 +151,21 @@ export default function HomeScreen() {
             }}
           >
             <Camera size={42} color="#FFFFFF" strokeWidth={1.5} />
-            <Text
-              className="text-sm font-semibold tracking-widest mt-4"
-              style={{ color: '#FFFFFF' }}
-            >
+            <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700', letterSpacing: 3, marginTop: 16 }}>
               SCAN LABEL
             </Text>
           </Pressable>
-        </View>
+        </Animated.View>
 
         {/* Instructions */}
-        <View className="px-8 pb-10">
-          <Text className="text-center text-base leading-6" style={{ color: colors.textSecondary }}>
+        <Animated.View style={[{ paddingHorizontal: 32, paddingBottom: 40 }, scanStyle]}>
+          <Text style={{ textAlign: 'center', fontSize: 16, lineHeight: 24, color: colors.textSecondary }}>
             Point your camera at any sake label to{'\n'}learn more about the brewery, profile, and{'\n'}pairings.
           </Text>
-        </View>
+        </Animated.View>
 
         {/* Recently Scanned / Popular Section */}
-        <View className="mt-4">
+        <Animated.View style={[{ marginTop: 16 }, listStyle]}>
           <View className="flex-row items-center justify-between px-5 mb-4">
             <Text className="text-xl font-bold" style={{ color: colors.text }}>
               {recentlyScanned.length > 0 ? 'Recently Scanned' : 'Popular Sake'}
@@ -226,7 +252,7 @@ export default function HomeScreen() {
               ))}
             </ScrollView>
           )}
-        </View>
+        </Animated.View>
       </ScrollView>
     </View>
   );

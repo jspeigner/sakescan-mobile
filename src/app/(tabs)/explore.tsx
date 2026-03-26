@@ -126,7 +126,7 @@ export default function ExploreScreen() {
         >
           <User size={20} color="#1a1a1a" />
         </Pressable>
-        <Text style={{ fontFamily: 'serif', fontSize: 20, fontWeight: '600', color: '#1a1a1a' }}>
+        <Text style={{ fontFamily: 'NotoSerifJP_600SemiBold', fontSize: 20, fontWeight: '600', color: '#1a1a1a' }}>
           SakeScan
         </Text>
         <Pressable className="w-10 h-10 rounded-full bg-[#F0EDE5] items-center justify-center">
