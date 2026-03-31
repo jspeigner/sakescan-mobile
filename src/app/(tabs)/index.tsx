@@ -17,7 +17,8 @@ import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
 import { useUserScans, useSakeList } from '@/lib/supabase-hooks';
-import { resolveSakeImageUrl, FALLBACK_SAKE_LABEL_URL } from '@/lib/supabase';
+import { resolveSakeImageUrl } from '@/lib/supabase';
+import { SakeImage } from '@/components/SakeImage';
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
@@ -52,7 +53,8 @@ export default function HomeScreen() {
   // Fetch popular sake as fallback when no scans
   const { data: popularSake, isLoading: sakeLoading } = useSakeList({ limit: 5 });
 
-  // Get recently scanned sake (matched only)
+  // Get recently scanned sake (matched only).
+  // Prefer the actual scan photo (scanned_image_url) over the DB catalog image.
   const recentlyScanned = userScans
     ?.filter(scan => scan.matched && scan.sake)
     .slice(0, 5)
@@ -60,8 +62,11 @@ export default function HomeScreen() {
       id: scan.sake_id!,
       name: scan.sake?.name ?? 'Unknown',
       brewery: scan.sake?.brewery ?? 'Unknown',
-      labelImageUrl: resolveSakeImageUrl(scan.sake?.image_url) ?? FALLBACK_SAKE_LABEL_URL,
-      avgRating: 0, // Would need to fetch from sake table
+      labelImageUrl:
+        (scan as { scanned_image_url?: string | null }).scanned_image_url ||
+        resolveSakeImageUrl(scan.sake?.image_url) ||
+        null,
+      avgRating: 0,
     })) ?? [];
 
   // Use popular sake if no scan history
@@ -71,7 +76,7 @@ export default function HomeScreen() {
         id: sake.id,
         name: sake.name,
         brewery: sake.brewery,
-        labelImageUrl: resolveSakeImageUrl(sake.image_url) ?? FALLBACK_SAKE_LABEL_URL,
+        labelImageUrl: resolveSakeImageUrl(sake.image_url) ?? null,
         avgRating: sake.average_rating ?? 0,
       }));
 
@@ -215,19 +220,8 @@ export default function HomeScreen() {
                   className="active:scale-98"
                   style={{ width: 170 }}
                 >
-                  <View
-                    className="rounded-2xl overflow-hidden mb-3"
-                    style={{
-                      backgroundColor: colors.surfaceSecondary,
-                      height: 200,
-                    }}
-                  >
-                    <ExpoImage
-                      source={{ uri: sake.labelImageUrl }}
-                      style={{ width: '100%', height: 200 }}
-                      contentFit="cover"
-                      transition={200}
-                    />
+                  <View className="rounded-2xl overflow-hidden mb-3">
+                    <SakeImage uri={sake.labelImageUrl} height={200} />
                   </View>
                   <Text className="font-bold text-base mb-1" numberOfLines={1} style={{ color: colors.text }}>
                     {sake.name}

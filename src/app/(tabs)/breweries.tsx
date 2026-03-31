@@ -8,7 +8,7 @@ import {
   RefreshControl,
   ListRenderItem,
 } from 'react-native';
-import { Image as ExpoImage } from 'expo-image';
+import { SakeImage } from '@/components/SakeImage';
 import { Star, MapPin, Building2 } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,7 +17,7 @@ import {
   useBreweriesCatalog,
   BREWERIES_CATALOG_PAGE_SIZE,
 } from '@/lib/supabase-hooks';
-import { FALLBACK_SAKE_LABEL_URL, resolveSakeImageUrl } from '@/lib/supabase';
+import { resolveSakeImageUrl } from '@/lib/supabase';
 import type { BreweryCatalogRow } from '@/lib/database.types';
 
 type BreweryDisplay = {
@@ -25,7 +25,7 @@ type BreweryDisplay = {
   region: string;
   sakeCount: number;
   avgRating: number;
-  displayImageUrl: string;
+  displayImageUrl: string | null;
 };
 
 function mapRowToDisplay(row: BreweryCatalogRow): BreweryDisplay {
@@ -39,7 +39,7 @@ function mapRowToDisplay(row: BreweryCatalogRow): BreweryDisplay {
     region: row.region?.trim() ? row.region : 'Japan',
     sakeCount: Number(row.sake_count) || 0,
     avgRating: avg,
-    displayImageUrl: resolved ?? FALLBACK_SAKE_LABEL_URL,
+    displayImageUrl: resolved ?? null,
   };
 }
 
@@ -87,17 +87,9 @@ export default function BreweriesScreen() {
           className="flex-row p-3 rounded-2xl"
           style={{ backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#F0EDE5' }}
         >
-          <ExpoImage
-            source={{ uri: brewery.displayImageUrl }}
-            style={{
-              width: 64,
-              height: 64,
-              borderRadius: 12,
-              backgroundColor: '#F5EED9',
-            }}
-            contentFit="cover"
-            transition={200}
-          />
+          <View style={{ width: 64, height: 64, borderRadius: 12, overflow: 'hidden' }}>
+            <SakeImage uri={brewery.displayImageUrl} height={64} />
+          </View>
           <View className="flex-1 ml-3 justify-center">
             <Text className="text-[#1a1a1a] font-bold text-base">{brewery.name}</Text>
             <Text className="text-[#C9A227] text-sm">{brewery.region}</Text>
@@ -133,12 +125,7 @@ export default function BreweriesScreen() {
               className="active:scale-98"
             >
               <View className="rounded-2xl overflow-hidden">
-                <ExpoImage
-                  source={{ uri: featuredBrewery.displayImageUrl }}
-                  style={{ width: '100%', height: 176, backgroundColor: '#F5EED9' }}
-                  contentFit="cover"
-                  transition={200}
-                />
+                <SakeImage uri={featuredBrewery.displayImageUrl} height={176} />
                 <View className="p-4" style={{ backgroundColor: '#F5EED9' }}>
                   <Text className="text-xl font-bold text-[#1a1a1a]">{featuredBrewery.name}</Text>
                   <View className="flex-row items-center mt-1">

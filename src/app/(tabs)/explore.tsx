@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Text, View, ScrollView, Pressable, ActivityIndicator } from 'react-native';
-import { Image as ExpoImage } from 'expo-image';
+import { SakeImage } from '@/components/SakeImage';
 import { Search, Star, Bell, ChevronDown, User, SlidersHorizontal, Wine, Clock, Globe, RefreshCw } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useSakeList, useSakeByRegion, useAllScans } from '@/lib/supabase-hooks';
-import { resolveSakeImageUrl, FALLBACK_SAKE_LABEL_URL } from '@/lib/supabase';
+import { resolveSakeImageUrl } from '@/lib/supabase';
 import type { Sake as SupabaseSake } from '@/lib/database.types';
 import { useScanHistoryStore } from '@/lib/scan-history-store';
 
@@ -20,7 +20,7 @@ function mapSupabaseSake(sake: SupabaseSake) {
     breweryName: sake.brewery ?? 'Unknown',
     sakeType: sake.type ?? 'Other',
     avgRating: sake.average_rating ?? 0,
-    labelImageUrl: resolveSakeImageUrl(sake.image_url) ?? FALLBACK_SAKE_LABEL_URL,
+    labelImageUrl: resolveSakeImageUrl(sake.image_url) ?? null,
     region: sake.region ?? sake.prefecture ?? '',
   };
 }
@@ -110,7 +110,7 @@ export default function ExploreScreen() {
         breweryName: sake.brewery ?? 'Unknown',
         sakeType: sake.type ?? 'Other',
         avgRating: sake.average_rating ?? 0,
-        labelImageUrl: resolveSakeImageUrl(sake.image_url) ?? FALLBACK_SAKE_LABEL_URL,
+        labelImageUrl: resolveSakeImageUrl(sake.image_url) ?? null,
         scanCount: 1,
         scannedAt: scan.created_at,
       };
@@ -267,16 +267,8 @@ export default function ExploreScreen() {
                       className="active:scale-98"
                       style={{ width: 140 }}
                     >
-                      <View
-                        className="rounded-2xl overflow-hidden mb-2"
-                        style={{ backgroundColor: '#F5EED9', height: 180 }}
-                      >
-                        <ExpoImage
-                          source={{ uri: sake.labelImageUrl }}
-                          style={{ width: '100%', height: '100%' }}
-                          contentFit="cover"
-                          transition={150}
-                        />
+                      <View className="rounded-2xl overflow-hidden mb-2">
+                        <SakeImage uri={sake.labelImageUrl} height={180} />
                       </View>
                       <Text className="text-[#1a1a1a] font-bold text-sm" numberOfLines={1}>
                         {sake.name}
@@ -333,22 +325,8 @@ export default function ExploreScreen() {
                       className="active:scale-98"
                       style={{ width: 140 }}
                     >
-                      <View
-                        className="rounded-2xl overflow-hidden mb-2"
-                        style={{ backgroundColor: '#F5EED9', height: 180 }}
-                      >
-                        {scan.imageUri ? (
-                          <ExpoImage
-                            source={{ uri: scan.imageUri }}
-                            style={{ width: '100%', height: '100%' }}
-                            contentFit="cover"
-                            transition={150}
-                          />
-                        ) : (
-                          <View className="flex-1 items-center justify-center">
-                            <Wine size={40} color="#C9A227" />
-                          </View>
-                        )}
+                      <View className="rounded-2xl overflow-hidden mb-2">
+                        <SakeImage uri={scan.imageUri} height={180} />
                       </View>
                       <Text className="text-[#1a1a1a] font-bold text-sm" numberOfLines={1}>
                         {scan.sakeInfo.name}
@@ -379,16 +357,8 @@ export default function ExploreScreen() {
                       onPress={() => handleSakePress(sake.id)}
                       className="flex-1 active:scale-98"
                     >
-                      <View
-                        className="rounded-2xl overflow-hidden mb-2"
-                        style={{ backgroundColor: '#F5EED9', height: 180 }}
-                      >
-                        <ExpoImage
-                          source={{ uri: sake.labelImageUrl }}
-                          style={{ width: '100%', height: '100%' }}
-                          contentFit="cover"
-                          transition={150}
-                        />
+                      <View className="rounded-2xl overflow-hidden mb-2">
+                        <SakeImage uri={sake.labelImageUrl} height={180} />
                       </View>
                       <Text className="text-[#1a1a1a] font-bold text-base" numberOfLines={1}>{sake.name}</Text>
                       <View className="flex-row items-center mt-1">
@@ -419,16 +389,8 @@ export default function ExploreScreen() {
                       className="active:scale-98"
                       style={{ width: '48%' }}
                     >
-                      <View
-                        className="rounded-2xl overflow-hidden mb-2"
-                        style={{ backgroundColor: '#F5EED9', height: 140 }}
-                      >
-                        <ExpoImage
-                          source={{ uri: sake.labelImageUrl }}
-                          style={{ width: '100%', height: '100%' }}
-                          contentFit="cover"
-                          transition={150}
-                        />
+                      <View className="rounded-2xl overflow-hidden mb-2">
+                        <SakeImage uri={sake.labelImageUrl} height={140} />
                       </View>
                       <Text className="text-[#1a1a1a] font-semibold text-sm" numberOfLines={1}>
                         {sake.name}
@@ -459,16 +421,8 @@ export default function ExploreScreen() {
                       className="flex-row items-center p-3 rounded-2xl"
                       style={{ backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#F0EDE5' }}
                     >
-                      <View
-                        className="w-14 h-14 rounded-xl overflow-hidden"
-                        style={{ backgroundColor: '#F5EED9' }}
-                      >
-                        <ExpoImage
-                          source={{ uri: sake.labelImageUrl }}
-                          style={{ width: '100%', height: '100%' }}
-                          contentFit="cover"
-                          transition={150}
-                        />
+                      <View className="w-14 h-14 rounded-xl overflow-hidden">
+                        <SakeImage uri={sake.labelImageUrl} height={56} contentFit="cover" />
                       </View>
                       <View className="flex-1 ml-3">
                         <Text className="text-[#1a1a1a] font-bold text-base" numberOfLines={1}>{sake.name}</Text>

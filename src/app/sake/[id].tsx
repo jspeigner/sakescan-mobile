@@ -19,7 +19,7 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Image } from 'expo-image';
+import { SakeImage } from '@/components/SakeImage';
 import { useLocalSearchParams, router } from 'expo-router';
 import {
   ChevronLeft,
@@ -38,7 +38,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useSake, useSakeRatings, useIsFavorite, useToggleFavorite } from '@/lib/supabase-hooks';
 import { useAuth } from '@/lib/auth-context';
-import { resolveSakeImageUrl, FALLBACK_SAKE_LABEL_URL } from '@/lib/supabase';
+import { resolveSakeImageUrl } from '@/lib/supabase';
 import { useTheme } from '@/lib/theme-context';
 import { getUserLocation } from '@/lib/location';
 import type { RatingWithUser } from '@/lib/database.types';
@@ -63,6 +63,25 @@ export default function SakeDetailScreen() {
 
   // Ratings/Reviews
   const { data: reviews } = useSakeRatings(id);
+
+  // Entrance animations — must be declared before any early returns (Rules of Hooks)
+  const heroOpacity = useSharedValue(0);
+  const contentY = useSharedValue(40);
+  const contentOpacity = useSharedValue(0);
+
+  useEffect(() => {
+    if (!supabaseSake) return;
+    heroOpacity.value = withTiming(1, { duration: 380, easing: Easing.out(Easing.quad) });
+    contentY.value = withDelay(180, withSpring(0, { damping: 18, stiffness: 130 }));
+    contentOpacity.value = withDelay(180, withTiming(1, { duration: 350 }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabaseSake]);
+
+  const heroStyle = useAnimatedStyle(() => ({ opacity: heroOpacity.value }));
+  const contentStyle = useAnimatedStyle(() => ({
+    opacity: contentOpacity.value,
+    transform: [{ translateY: contentY.value }],
+  }));
 
   if (isLoading) {
     return (
@@ -125,7 +144,7 @@ export default function SakeDetailScreen() {
     description: supabaseSake.description ?? 'No description available.',
     avgRating: supabaseSake.average_rating ?? 0,
     reviewCount: supabaseSake.total_ratings ?? 0,
-    labelImageUrl: resolveSakeImageUrl(supabaseSake.image_url) ?? FALLBACK_SAKE_LABEL_URL,
+    labelImageUrl: resolveSakeImageUrl(supabaseSake.image_url) ?? null,
     alcoholContent: supabaseSake.alcohol_percentage ? `${supabaseSake.alcohol_percentage}%` : 'N/A',
     riceMilling: supabaseSake.polishing_ratio ? `${supabaseSake.polishing_ratio}%` : undefined,
     riceType: supabaseSake.rice_variety ?? 'N/A',
@@ -200,24 +219,6 @@ export default function SakeDetailScreen() {
     return count.toString();
   };
 
-  // Component-level entrance animations — does NOT use Stack animation prop
-  const heroOpacity = useSharedValue(0);
-  const contentY = useSharedValue(40);
-  const contentOpacity = useSharedValue(0);
-
-  useEffect(() => {
-    heroOpacity.value = withTiming(1, { duration: 380, easing: Easing.out(Easing.quad) });
-    contentY.value = withDelay(180, withSpring(0, { damping: 18, stiffness: 130 }));
-    contentOpacity.value = withDelay(180, withTiming(1, { duration: 350 }));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const heroStyle = useAnimatedStyle(() => ({ opacity: heroOpacity.value }));
-  const contentStyle = useAnimatedStyle(() => ({
-    opacity: contentOpacity.value,
-    transform: [{ translateY: contentY.value }],
-  }));
-
   return (
     <View className="flex-1" style={{ backgroundColor: colors.background }}>
       {/* Header */}
@@ -249,11 +250,7 @@ export default function SakeDetailScreen() {
         <Animated.View
           style={[{ width: '100%', overflow: 'hidden', height: 340, backgroundColor: colors.surface }, heroStyle]}
         >
-          <Image
-            source={{ uri: sake.labelImageUrl }}
-            style={{ width: '100%', height: '100%' }}
-            contentFit="cover"
-          />
+          <SakeImage uri={sake.labelImageUrl} height={340} />
           <LinearGradient
             colors={['transparent', `${colors.background}99`, colors.background]}
             style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 140 }}

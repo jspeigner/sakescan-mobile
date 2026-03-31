@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { Text, View, ScrollView, Pressable, Image, ActivityIndicator } from 'react-native';
-import { Heart, Star, Wine } from 'lucide-react-native';
+import { Text, View, ScrollView, Pressable, ActivityIndicator } from 'react-native';
+import { Heart, Star } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/lib/auth-context';
 import { useUserRatings, useUserFavorites } from '@/lib/supabase-hooks';
-import { resolveSakeImageUrl, FALLBACK_SAKE_LABEL_URL } from '@/lib/supabase';
+import { resolveSakeImageUrl } from '@/lib/supabase';
+import { SakeImage } from '@/components/SakeImage';
 
 type TabType = 'favorites' | 'rated';
 
@@ -26,7 +27,7 @@ export default function SavedScreen() {
     id: fav.sake_id,
     name: fav.sake?.name ?? 'Unknown',
     brewery: fav.sake?.brewery ?? 'Unknown',
-    labelImageUrl: resolveSakeImageUrl(fav.sake?.image_url) ?? FALLBACK_SAKE_LABEL_URL,
+    labelImageUrl: resolveSakeImageUrl(fav.sake?.image_url) ?? null,
     avgRating: fav.sake?.average_rating ?? 0,
   }));
 
@@ -35,7 +36,7 @@ export default function SavedScreen() {
     id: rating.sake_id,
     name: rating.sake?.name ?? 'Unknown',
     brewery: rating.sake?.brewery ?? 'Unknown',
-    labelImageUrl: resolveSakeImageUrl(rating.sake?.image_url) ?? FALLBACK_SAKE_LABEL_URL,
+    labelImageUrl: resolveSakeImageUrl(rating.sake?.image_url) ?? null,
     userRating: rating.rating,
   }));
 
@@ -142,15 +143,8 @@ export default function SavedScreen() {
                       style={{ width: '48%' }}
                     >
                       <View className="relative">
-                        <View
-                          className="rounded-2xl overflow-hidden mb-2"
-                          style={{ backgroundColor: '#F5EED9', height: 160 }}
-                        >
-                          <Image
-                            source={{ uri: sake.labelImageUrl }}
-                            className="w-full h-full"
-                            resizeMode="cover"
-                          />
+                        <View className="rounded-2xl overflow-hidden mb-2">
+                          <SakeImage uri={sake.labelImageUrl} height={160} />
                         </View>
                         {/* Heart Badge */}
                         <View
@@ -187,15 +181,8 @@ export default function SavedScreen() {
                       style={{ width: '48%' }}
                     >
                       <View className="relative">
-                        <View
-                          className="rounded-2xl overflow-hidden mb-2"
-                          style={{ backgroundColor: '#F5EED9', height: 160 }}
-                        >
-                          <Image
-                            source={{ uri: sake.labelImageUrl }}
-                            className="w-full h-full"
-                            resizeMode="cover"
-                          />
+                        <View className="rounded-2xl overflow-hidden mb-2">
+                          <SakeImage uri={sake.labelImageUrl} height={160} />
                         </View>
                         {/* Rating Badge */}
                         <View

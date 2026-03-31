@@ -182,10 +182,9 @@ export const getCurrentSession = async () => {
 
 /**
  * Placeholder when `sake.image_url` is empty or cannot be resolved.
- * (The old default Unsplash id `photo-1589464835340` is not sake-specific and can show unrelated food.)
+ * Use null so components can render a proper styled placeholder instead of a generic image.
  */
-export const FALLBACK_SAKE_LABEL_URL =
-  'https://images.unsplash.com/photo-1569529465841-dfecdab7503b?w=600&h=800&fit=crop';
+export const FALLBACK_SAKE_LABEL_URL: string | null = null;
 
 /** Resolve sake image URL from DB value. Handles both full URLs and Supabase storage paths. */
 export function resolveSakeImageUrl(value: string | null | undefined): string | null {

@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Text, View, ScrollView, Pressable, Image, ActivityIndicator, TextInput } from 'react-native';
+import { Text, View, ScrollView, Pressable, ActivityIndicator, TextInput } from 'react-native';
 import { ChevronLeft, Search, Star, Wine, SlidersHorizontal, X } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useSearchSake, useSakeList } from '@/lib/supabase-hooks';
-import { resolveSakeImageUrl, FALLBACK_SAKE_LABEL_URL } from '@/lib/supabase';
+import { resolveSakeImageUrl } from '@/lib/supabase';
+import { SakeImage } from '@/components/SakeImage';
 import type { Sake as SupabaseSake } from '@/lib/database.types';
 
 // Helper to map Supabase sake to display format
@@ -16,7 +17,7 @@ function mapSupabaseSake(sake: SupabaseSake) {
     brewery: sake.brewery ?? 'Unknown',
     type: sake.type ?? 'Other',
     avgRating: sake.average_rating ?? 0,
-    labelImageUrl: resolveSakeImageUrl(sake.image_url) ?? FALLBACK_SAKE_LABEL_URL,
+    labelImageUrl: resolveSakeImageUrl(sake.image_url) ?? null,
     region: sake.region ?? sake.prefecture ?? '',
     polishingRatio: sake.polishing_ratio,
     smv: sake.smv,
@@ -255,15 +256,8 @@ export default function SearchResultsScreen() {
                 style={{ backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#F0EDE5' }}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <View
-                  className="w-16 h-16 rounded-xl overflow-hidden"
-                  style={{ backgroundColor: '#F5EED9' }}
-                >
-                  <Image
-                    source={{ uri: sake.labelImageUrl }}
-                    className="w-full h-full"
-                    resizeMode="cover"
-                  />
+                <View className="w-16 h-16 rounded-xl overflow-hidden">
+                  <SakeImage uri={sake.labelImageUrl} height={64} />
                 </View>
                 <View className="flex-1 ml-3">
                   <Text className="text-[#1a1a1a] font-bold text-base" numberOfLines={1}>
