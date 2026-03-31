@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Text, View, Pressable, StyleSheet, Platform } from 'react-native';
+import { Text, View, Pressable, StyleSheet, Platform, Image } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import Animated, {
@@ -8,7 +8,6 @@ import Animated, {
   withTiming,
   withRepeat,
   withSequence,
-  withSpring,
   Easing,
   interpolate,
   cancelAnimation,
@@ -24,6 +23,20 @@ import { scanSakeLabel } from '@/lib/openai-scan';
 // Height of the scan frame (must match styles.frame height)
 const FRAME_HEIGHT = 380;
 
+const SCAN_STAGES = [
+  { threshold: 0, label: 'Capturing label...' },
+  { threshold: 20, label: 'Identifying sake...' },
+  { threshold: 50, label: 'Analyzing characteristics...' },
+  { threshold: 80, label: 'Finishing up...' },
+];
+
+function getScanStage(progress: number): string {
+  for (let i = SCAN_STAGES.length - 1; i >= 0; i--) {
+    if (progress >= SCAN_STAGES[i].threshold) return SCAN_STAGES[i].label;
+  }
+  return SCAN_STAGES[0].label;
+}
+
 export default function CameraScreen() {
   const insets = useSafeAreaInsets();
   const [facing] = useState<CameraType>('back');
@@ -31,6 +44,7 @@ export default function CameraScreen() {
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
   const [flashOn, setFlashOn] = useState(false);
+  const [capturedImageUri, setCapturedImageUri] = useState<string | null>(null);
   const cameraRef = useRef<CameraView>(null);
 
   // Reanimated values
@@ -144,6 +158,7 @@ export default function CameraScreen() {
   const processImage = async (base64Image: string, imageUri?: string) => {
     if (isScanning) return;
 
+    setCapturedImageUri(imageUri ?? null);
     setIsScanning(true);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
@@ -197,6 +212,7 @@ export default function CameraScreen() {
       }, 100);
     } finally {
       setIsScanning(false);
+      setCapturedImageUri(null);
     }
   };
 
@@ -280,15 +296,28 @@ export default function CameraScreen() {
     setFlashOn(!flashOn);
   };
 
+  const stageText = getScanStage(scanProgress);
+
   return (
     <View style={styles.container}>
-      {/* Camera - no children allowed */}
-      <CameraView
-        ref={cameraRef}
-        style={StyleSheet.absoluteFill}
-        facing={facing}
-        enableTorch={flashOn}
-      />
+      {/* Background: frozen captured photo when scanning, live camera otherwise */}
+      {isScanning && capturedImageUri ? (
+        <>
+          <Image
+            source={{ uri: capturedImageUri }}
+            style={StyleSheet.absoluteFill}
+            resizeMode="cover"
+          />
+          <View style={[StyleSheet.absoluteFillObject, styles.scanDimOverlay]} />
+        </>
+      ) : (
+        <CameraView
+          ref={cameraRef}
+          style={StyleSheet.absoluteFill}
+          facing={facing}
+          enableTorch={flashOn}
+        />
+      )}
 
       {/* Overlay UI - positioned absolutely on top of camera */}
       <View style={styles.overlay}>
@@ -301,7 +330,9 @@ export default function CameraScreen() {
           <Pressable onPress={handleClose} style={styles.headerButton}>
             <ChevronLeft size={24} color="#FFFFFF" />
           </Pressable>
-          <Text style={styles.headerTitle}>Scan Sake Label</Text>
+          <Text style={styles.headerTitle}>
+            {isScanning ? 'Scanning...' : 'Scan Sake Label'}
+          </Text>
           <Pressable style={styles.headerButton}>
             <Info size={22} color="#FFFFFF" />
           </Pressable>
@@ -329,59 +360,62 @@ export default function CameraScreen() {
           </Animated.View>
         </View>
 
-        {/* Instructions and Progress */}
-        <View style={styles.instructionsContainer}>
-          <Text style={styles.instructionText}>
-            {isScanning ? 'Analyzing with AI...' : 'Position label within frame'}
-          </Text>
-
-          {isScanning && (
-            <View style={styles.progressBarTrack}>
-              <Animated.View style={[styles.progressBarFill, progressBarStyle]} />
-              <Text style={styles.progressPercent}>{scanProgress}%</Text>
-            </View>
-          )}
-        </View>
-
         {/* Full-screen white flash on success */}
         <Animated.View style={[styles.successFlash, flashStyle]} pointerEvents="none" />
 
-        {/* Bottom Controls — frosted glass */}
-        <BlurView
-          intensity={Platform.OS === 'ios' ? 55 : 100}
-          tint="dark"
-          style={[styles.bottomBar, { paddingBottom: insets.bottom + 20 }]}
-        >
-          {/* Gallery Button */}
-          <Pressable
-            style={styles.sideButton}
-            onPress={handlePickImage}
-            disabled={isScanning}
+        {/* Bottom area: Vivino-style analyzing panel when scanning, controls when idle */}
+        {isScanning ? (
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 75 : 100}
+            tint="dark"
+            style={[styles.analyzingPanel, { paddingBottom: insets.bottom + 32 }]}
           >
-            <ImageIcon size={24} color="#FFFFFF" />
-          </Pressable>
+            <Text style={styles.analyzingTitle}>Analyzing with AI</Text>
+            <Text style={styles.analyzingStage}>{stageText}</Text>
 
-          {/* Capture Button */}
-          <Pressable
-            onPress={handleCapture}
-            disabled={isScanning}
-            style={[styles.captureButton, isScanning && styles.captureButtonDisabled]}
-          >
-            <View style={styles.captureButtonInner}>
-              <View style={styles.cameraIcon}>
-                <View style={styles.cameraIconLens} />
-              </View>
+            {/* Thick Vivino-style progress bar */}
+            <View style={styles.progressTrack}>
+              <Animated.View style={[styles.progressFill, progressBarStyle]} />
             </View>
-          </Pressable>
 
-          {/* Flash Button */}
-          <Pressable
-            onPress={toggleFlash}
-            style={[styles.sideButton, flashOn && styles.sideButtonActive]}
-          >
-            <Zap size={24} color="#FFFFFF" fill={flashOn ? '#FFFFFF' : 'transparent'} />
-          </Pressable>
-        </BlurView>
+            <Text style={styles.progressLabel}>{scanProgress}%</Text>
+          </BlurView>
+        ) : (
+          <>
+            <View style={styles.instructionsContainer}>
+              <Text style={styles.instructionText}>Position label within frame</Text>
+            </View>
+
+            {/* Bottom Controls — frosted glass */}
+            <BlurView
+              intensity={Platform.OS === 'ios' ? 55 : 100}
+              tint="dark"
+              style={[styles.bottomBar, { paddingBottom: insets.bottom + 20 }]}
+            >
+              {/* Gallery Button */}
+              <Pressable style={styles.sideButton} onPress={handlePickImage}>
+                <ImageIcon size={24} color="#FFFFFF" />
+              </Pressable>
+
+              {/* Capture Button */}
+              <Pressable onPress={handleCapture} style={styles.captureButton}>
+                <View style={styles.captureButtonInner}>
+                  <View style={styles.cameraIcon}>
+                    <View style={styles.cameraIconLens} />
+                  </View>
+                </View>
+              </Pressable>
+
+              {/* Flash Button */}
+              <Pressable
+                onPress={toggleFlash}
+                style={[styles.sideButton, flashOn && styles.sideButtonActive]}
+              >
+                <Zap size={24} color="#FFFFFF" fill={flashOn ? '#FFFFFF' : 'transparent'} />
+              </Pressable>
+            </BlurView>
+          </>
+        )}
       </View>
     </View>
   );
@@ -516,6 +550,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 3,
     borderRightWidth: 3,
   },
+  scanDimOverlay: {
+    backgroundColor: 'rgba(0, 0, 0, 0.38)',
+  },
   instructionsContainer: {
     alignItems: 'center',
     paddingHorizontal: 20,
@@ -531,33 +568,52 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    height: 2,
-    borderRadius: 1,
+    height: 3,
+    borderRadius: 2,
     backgroundColor: '#C9A227',
     shadowColor: '#C9A227',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.9,
-    shadowRadius: 6,
+    shadowOpacity: 1,
+    shadowRadius: 10,
   },
-  progressBarTrack: {
-    width: 220,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    marginTop: 12,
+  // Vivino-style analyzing panel
+  analyzingPanel: {
+    paddingTop: 28,
+    paddingHorizontal: 28,
+    alignItems: 'center',
+  },
+  analyzingTitle: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+    marginBottom: 6,
+  },
+  analyzingStage: {
+    color: 'rgba(255, 255, 255, 0.58)',
+    fontSize: 14,
+    fontWeight: '400',
+    letterSpacing: 0.1,
+    marginBottom: 22,
+  },
+  progressTrack: {
+    width: '100%',
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
     overflow: 'hidden',
-    position: 'relative',
   },
-  progressBarFill: {
+  progressFill: {
     height: '100%',
-    borderRadius: 2,
+    borderRadius: 4,
     backgroundColor: '#C9A227',
   },
-  progressPercent: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 11,
-    marginTop: 6,
-    letterSpacing: 0.5,
+  progressLabel: {
+    color: 'rgba(255, 255, 255, 0.45)',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 10,
+    letterSpacing: 0.8,
   },
   successFlash: {
     ...StyleSheet.absoluteFillObject,
