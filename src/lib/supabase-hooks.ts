@@ -1,4 +1,6 @@
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
+import * as FileSystem from 'expo-file-system';
+import { decode } from 'base64-arraybuffer';
 import { supabase } from './supabase';
 import type {
   Sake,
@@ -334,6 +336,23 @@ export function useScanLabel() {
   });
 }
 
+/** Upload a local file URI to the sake-images bucket. Returns the storage path on success. */
+async function uploadLabelImage(localUri: string, sakeId: string): Promise<string | null> {
+  const path = `labels/${sakeId}-${Date.now()}.jpg`;
+  const base64 = await FileSystem.readAsStringAsync(localUri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  const arrayBuffer = decode(base64);
+  const { error } = await supabase.storage
+    .from('sake-images')
+    .upload(path, arrayBuffer, { contentType: 'image/jpeg', upsert: false });
+  if (error) {
+    console.warn('Storage upload error:', error.message);
+    return null;
+  }
+  return path;
+}
+
 export function useCreateSake() {
   const queryClient = useQueryClient();
 
@@ -355,17 +374,31 @@ export function useCreateSake() {
       foodPairings?: string[];
       flavorProfile?: string[];
       servingTemperature?: string[];
+      // Label photo captured during scan
+      imageUrl?: string;
     }) => {
       // Check if sake already exists by name + brewery
       const { data: existing } = await supabase
         .from('sake')
-        .select('id')
+        .select('id, image_url')
         .eq('name', params.name)
         .eq('brewery', params.brewery)
         .maybeSingle();
 
       if (existing) {
         console.log('Sake already exists, returning existing ID:', existing.id);
+        // If the existing record has no image and we have one, upload & patch it
+        if (!existing.image_url && params.imageUrl) {
+          try {
+            const storagePath = await uploadLabelImage(params.imageUrl, existing.id);
+            if (storagePath) {
+              await supabase.from('sake').update({ image_url: storagePath } as Record<string, unknown>).eq('id', existing.id);
+              console.log('📸 Patched missing image_url on existing sake');
+            }
+          } catch (uploadErr) {
+            console.warn('⚠️ Could not upload label image for existing sake:', uploadErr);
+          }
+        }
         return { id: existing.id, isNew: false };
       }
 
@@ -399,6 +432,20 @@ export function useCreateSake() {
 
       if (error) throw error;
       console.log('✅ Created sake with rich OpenAI data in Supabase');
+
+      // Upload the label photo and store the path on the new record
+      if (params.imageUrl) {
+        try {
+          const storagePath = await uploadLabelImage(params.imageUrl, data.id);
+          if (storagePath) {
+            await supabase.from('sake').update({ image_url: storagePath } as Record<string, unknown>).eq('id', data.id);
+            console.log('📸 Label image uploaded and linked to sake:', storagePath);
+          }
+        } catch (uploadErr) {
+          console.warn('⚠️ Could not upload label image (non-fatal):', uploadErr);
+        }
+      }
+
       return { id: data.id, isNew: true };
     },
     onSuccess: () => {

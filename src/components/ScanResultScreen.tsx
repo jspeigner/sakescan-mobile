@@ -118,6 +118,8 @@ export default function ScanResultScreen({ sakeInfo, imageUri }: ScanResultScree
           foodPairings: sakeInfo.foodPairings,
           flavorProfile: sakeInfo.flavorProfile,
           servingTemperature: sakeInfo.servingTemperature,
+          // Upload the captured label photo
+          imageUrl: imageUri,
         });
 
         console.log('✅ Sake saved to Supabase with ID:', sakeResult.id);
