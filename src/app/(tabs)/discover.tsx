@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Text, View, ScrollView, Pressable, ActivityIndicator } from 'react-native';
-import { Heart, Star } from 'lucide-react-native';
+import { Heart, Star, Wine } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
