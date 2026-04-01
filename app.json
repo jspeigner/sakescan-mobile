@@ -3,7 +3,7 @@
     "name": "SakeScan",
     "slug": "sakescan",
     "scheme": "sakescan",
-    "version": "2.0.4",
+    "version": "2.0.5",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
