@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Text, View, ScrollView, Pressable, TextInput } from 'react-native';
+import { useState, useRef } from 'react';
+import { Text, View, ScrollView, Pressable, TextInput, PanResponder } from 'react-native';
 import { X, Search, ChevronUp, ChevronDown, Check } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -349,46 +349,81 @@ export default function FiltersScreen() {
   );
 }
 
-// Simple single value slider
+const THUMB_STYLE = {
+  width: 26,
+  height: 26,
+  borderRadius: 13,
+  backgroundColor: '#FFFFFF',
+  borderWidth: 2,
+  borderColor: '#C9A227',
+  position: 'absolute' as const,
+  marginLeft: -13,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.12,
+  shadowRadius: 4,
+  elevation: 3,
+};
+
+// Single-value draggable slider (SMV, polishing ratio)
 function SingleSlider({
   minValue,
   maxValue,
   value,
+  onChange,
 }: {
   minValue: number;
   maxValue: number;
   value: number;
   onChange: (value: number) => void;
 }) {
+  const trackWidthRef = useRef(0);
+  // Live refs to avoid stale closures inside PanResponder
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const minRef = useRef(minValue);
+  minRef.current = minValue;
+  const maxRef = useRef(maxValue);
+  maxRef.current = maxValue;
+  const startValueRef = useRef(value);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        startValueRef.current = valueRef.current;
+      },
+      onPanResponderMove: (_, { dx }) => {
+        const width = trackWidthRef.current;
+        if (!width) return;
+        const range = maxRef.current - minRef.current;
+        const delta = (dx / width) * range;
+        const next = Math.max(minRef.current, Math.min(maxRef.current, startValueRef.current + delta));
+        onChangeRef.current(Math.round(next * 10) / 10);
+      },
+    })
+  ).current;
+
   const percentage = ((value - minValue) / (maxValue - minValue)) * 100;
 
   return (
-    <View className="h-6 justify-center">
-      {/* Track */}
-      <View className="h-1 bg-[#E8E4D9] rounded-full">
-        <View
-          className="h-1 bg-[#C9A227] rounded-full"
-          style={{ width: `${percentage}%` }}
-        />
+    <View
+      style={{ height: 32, justifyContent: 'center' }}
+      onLayout={e => { trackWidthRef.current = e.nativeEvent.layout.width; }}
+      {...panResponder.panHandlers}
+    >
+      <View style={{ height: 4, backgroundColor: '#E8E4D9', borderRadius: 2 }}>
+        <View style={{ height: 4, backgroundColor: '#C9A227', borderRadius: 2, width: `${percentage}%` }} />
       </View>
-      {/* Thumb */}
-      <Pressable
-        className="absolute w-6 h-6 rounded-full bg-white border-2 border-[#C9A227]"
-        style={{
-          left: `${percentage}%`,
-          marginLeft: -12,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.1,
-          shadowRadius: 4,
-          elevation: 3,
-        }}
-      />
+      <View style={[THUMB_STYLE, { top: 3, left: `${percentage}%` as `${number}%` }]} />
     </View>
   );
 }
 
-// Dual thumb slider for price range
+// Dual-thumb draggable slider (price range)
 function SliderTrack({
   minValue,
   maxValue,
@@ -404,47 +439,74 @@ function SliderTrack({
   onLowChange: (value: number) => void;
   onHighChange: (value: number) => void;
 }) {
-  const lowPercentage = ((lowValue - minValue) / (maxValue - minValue)) * 100;
-  const highPercentage = ((highValue - minValue) / (maxValue - minValue)) * 100;
+  const trackWidthRef = useRef(0);
+  const lowRef = useRef(lowValue);
+  lowRef.current = lowValue;
+  const highRef = useRef(highValue);
+  highRef.current = highValue;
+  const onLowRef = useRef(onLowChange);
+  onLowRef.current = onLowChange;
+  const onHighRef = useRef(onHighChange);
+  onHighRef.current = onHighChange;
+  const minRef = useRef(minValue);
+  minRef.current = minValue;
+  const maxRef = useRef(maxValue);
+  maxRef.current = maxValue;
+  const startLow = useRef(lowValue);
+  const startHigh = useRef(highValue);
+
+  const lowPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => { startLow.current = lowRef.current; },
+      onPanResponderMove: (_, { dx }) => {
+        const width = trackWidthRef.current;
+        if (!width) return;
+        const range = maxRef.current - minRef.current;
+        const next = Math.max(minRef.current, Math.min(highRef.current - 5, startLow.current + (dx / width) * range));
+        onLowRef.current(Math.round(next));
+      },
+    })
+  ).current;
+
+  const highPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => { startHigh.current = highRef.current; },
+      onPanResponderMove: (_, { dx }) => {
+        const width = trackWidthRef.current;
+        if (!width) return;
+        const range = maxRef.current - minRef.current;
+        const next = Math.max(lowRef.current + 5, Math.min(maxRef.current, startHigh.current + (dx / width) * range));
+        onHighRef.current(Math.round(next));
+      },
+    })
+  ).current;
+
+  const lowPct = ((lowValue - minValue) / (maxValue - minValue)) * 100;
+  const highPct = ((highValue - minValue) / (maxValue - minValue)) * 100;
 
   return (
-    <View className="h-6 justify-center">
-      {/* Track */}
-      <View className="h-1 bg-[#E8E4D9] rounded-full">
+    <View
+      style={{ height: 32, justifyContent: 'center' }}
+      onLayout={e => { trackWidthRef.current = e.nativeEvent.layout.width; }}
+    >
+      <View style={{ height: 4, backgroundColor: '#E8E4D9', borderRadius: 2 }}>
         <View
-          className="h-1 bg-[#C9A227] rounded-full absolute"
           style={{
-            left: `${lowPercentage}%`,
-            right: `${100 - highPercentage}%`,
+            height: 4,
+            backgroundColor: '#C9A227',
+            borderRadius: 2,
+            position: 'absolute',
+            left: `${lowPct}%` as `${number}%`,
+            right: `${100 - highPct}%` as `${number}%`,
           }}
         />
       </View>
-      {/* Low Thumb */}
-      <Pressable
-        className="absolute w-6 h-6 rounded-full bg-white border-2 border-[#C9A227]"
-        style={{
-          left: `${lowPercentage}%`,
-          marginLeft: -12,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.1,
-          shadowRadius: 4,
-          elevation: 3,
-        }}
-      />
-      {/* High Thumb */}
-      <Pressable
-        className="absolute w-6 h-6 rounded-full bg-white border-2 border-[#C9A227]"
-        style={{
-          left: `${highPercentage}%`,
-          marginLeft: -12,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.1,
-          shadowRadius: 4,
-          elevation: 3,
-        }}
-      />
+      <View style={[THUMB_STYLE, { top: 3, left: `${lowPct}%` as `${number}%` }]} {...lowPan.panHandlers} />
+      <View style={[THUMB_STYLE, { top: 3, left: `${highPct}%` as `${number}%` }]} {...highPan.panHandlers} />
     </View>
   );
 }

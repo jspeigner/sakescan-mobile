@@ -1,10 +1,11 @@
 import { View, Text, StyleSheet } from 'react-native';
+import type { DimensionValue } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { useTheme } from '@/lib/theme-context';
 
 interface SakeImageProps {
   uri: string | null | undefined;
-  width?: number | string;
+  width?: DimensionValue;
   height: number;
   borderRadius?: number;
   contentFit?: 'cover' | 'contain' | 'fill';
@@ -29,7 +30,7 @@ export function SakeImage({
       <View
         style={[
           styles.placeholder,
-          { width: width as number, height, borderRadius, backgroundColor: colors.surfaceSecondary },
+          { width, height, borderRadius, backgroundColor: colors.surfaceSecondary },
         ]}
       >
         <Text style={[styles.kanji, { color: colors.textTertiary }]}>酒</Text>

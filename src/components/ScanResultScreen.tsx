@@ -294,7 +294,7 @@ export default function ScanResultScreen({ sakeInfo, imageUri }: ScanResultScree
               <View className="flex-row flex-wrap gap-2">
                 {sakeInfo.flavorProfile.map((flavor, index) => (
                   <View
-                    key={flavor}
+                    key={`flavor-${index}`}
                     className="px-4 py-2 rounded-full"
                     style={{
                       backgroundColor: index === 0 ? '#C9A227' : '#F5F3EE',
@@ -319,9 +319,9 @@ export default function ScanResultScreen({ sakeInfo, imageUri }: ScanResultScree
                 Recommended Serving
               </Text>
               <View className="flex-row gap-3">
-                {sakeInfo.servingTemperature.map((temp) => (
+                {sakeInfo.servingTemperature.map((temp, index) => (
                   <View
-                    key={temp}
+                    key={`temp-${index}`}
                     className="flex-1 items-center py-4 rounded-2xl"
                     style={{
                       backgroundColor: '#FFFFFF',
@@ -376,9 +376,9 @@ export default function ScanResultScreen({ sakeInfo, imageUri }: ScanResultScree
                 Food Pairings
               </Text>
               <View className="flex-row flex-wrap gap-2">
-                {sakeInfo.foodPairings.map((food) => (
+                {sakeInfo.foodPairings.map((food, index) => (
                   <View
-                    key={food}
+                    key={`food-${index}`}
                     className="px-4 py-2 rounded-full"
                     style={{ backgroundColor: '#F5F3EE' }}
                   >

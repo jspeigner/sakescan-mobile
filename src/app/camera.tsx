@@ -45,6 +45,7 @@ export default function CameraScreen() {
   const [scanProgress, setScanProgress] = useState(0);
   const [flashOn, setFlashOn] = useState(false);
   const [capturedImageUri, setCapturedImageUri] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const cameraRef = useRef<CameraView>(null);
 
   // Reanimated values
@@ -188,28 +189,14 @@ export default function CameraScreen() {
           },
         });
       } else {
-        // Handle scan failure
         console.error('❌ Scan failed:', result.error);
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-
-        // Show user-friendly error message
-        setTimeout(() => {
-          router.back();
-          setTimeout(() => {
-            alert(result.error || 'Failed to analyze the label. Please try again with a clearer photo.');
-          }, 300);
-        }, 100);
+        setErrorMessage(result.error || 'Could not identify the label. Try a clearer photo.');
       }
     } catch (error: any) {
       console.error('Scan error:', error);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-
-      setTimeout(() => {
-        router.back();
-        setTimeout(() => {
-          alert('An error occurred while scanning. Please check your internet connection and try again.');
-        }, 300);
-      }, 100);
+      setErrorMessage('Something went wrong. Check your internet connection and try again.');
     } finally {
       setIsScanning(false);
       setCapturedImageUri(null);
@@ -222,7 +209,6 @@ export default function CameraScreen() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
-      // Capture photo from camera
       const photo = await cameraRef.current?.takePictureAsync({
         base64: true,
         quality: 0.7,
@@ -236,7 +222,7 @@ export default function CameraScreen() {
     } catch (error) {
       console.error('Capture error:', error);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      alert('Failed to capture photo. Please try again.');
+      setErrorMessage('Failed to capture photo. Please try again.');
       setIsScanning(false);
     }
   };
@@ -249,7 +235,7 @@ export default function CameraScreen() {
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
-        alert('Please allow photo library access to scan a label from an image.');
+        setErrorMessage('Please allow photo library access in Settings to scan from your library.');
         return;
       }
 
@@ -275,14 +261,14 @@ export default function CameraScreen() {
       }
 
       if (!base64) {
-        alert('Could not read this image. Try another photo or take a new picture.');
+        setErrorMessage('Could not read this image. Try another photo or take a new picture.');
         return;
       }
 
       await processImage(base64, asset.uri);
     } catch (error) {
       console.error('Image picker error:', error);
-      alert('Failed to pick image. Please try again.');
+      setErrorMessage('Failed to pick image. Please try again.');
     }
   };
 
@@ -362,6 +348,16 @@ export default function CameraScreen() {
 
         {/* Full-screen white flash on success */}
         <Animated.View style={[styles.successFlash, flashStyle]} pointerEvents="none" />
+
+        {/* Error toast — tap to dismiss */}
+        {errorMessage && (
+          <Pressable
+            onPress={() => setErrorMessage(null)}
+            style={styles.errorToast}
+          >
+            <Text style={styles.errorToastText}>{errorMessage}</Text>
+          </Pressable>
+        )}
 
         {/* Bottom area: Vivino-style analyzing panel when scanning, controls when idle */}
         {isScanning ? (
@@ -618,6 +614,25 @@ const styles = StyleSheet.create({
   successFlash: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#FFFFFF',
+  },
+  errorToast: {
+    position: 'absolute',
+    bottom: 160,
+    left: 24,
+    right: 24,
+    backgroundColor: 'rgba(30,10,10,0.88)',
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(220,60,60,0.4)',
+  },
+  errorToastText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 20,
   },
   bottomBar: {
     flexDirection: 'row',

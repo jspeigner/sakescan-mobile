@@ -8,8 +8,13 @@ export default function ScanResult() {
     imageUri?: string;
   }>();
 
-  // Parse the sake data from URL params
-  const sakeInfo = params.sakeData ? JSON.parse(params.sakeData) : null;
+  // Parse the sake data from URL params — guard against malformed JSON
+  let sakeInfo = null;
+  try {
+    sakeInfo = params.sakeData ? JSON.parse(params.sakeData) : null;
+  } catch {
+    sakeInfo = null;
+  }
 
   if (!sakeInfo) {
     return <View className="flex-1 bg-white" />;
