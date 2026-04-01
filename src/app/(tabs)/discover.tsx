@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Text, View, ScrollView, Pressable, ActivityIndicator } from 'react-native';
-import { Heart, Star, Wine } from 'lucide-react-native';
+import { Heart, Star, GlassWater } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -114,7 +114,7 @@ export default function SavedScreen() {
           </View>
         ) : currentSakes.length === 0 ? (
           <View className="flex-1 items-center justify-center py-20 px-5">
-            <Wine size={48} color="#C9A227" />
+            <GlassWater size={48} color="#C9A227" />
             <Text className="text-[#1a1a1a] font-semibold text-lg mt-4">
               {activeTab === 'favorites' ? 'No favorites yet' : 'No rated sakes yet'}
             </Text>

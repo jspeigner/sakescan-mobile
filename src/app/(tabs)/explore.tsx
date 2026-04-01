@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Text, View, ScrollView, Pressable, ActivityIndicator } from 'react-native';
 import { SakeImage } from '@/components/SakeImage';
-import { Search, Star, Bell, ChevronDown, User, SlidersHorizontal, Wine, Clock, Globe, RefreshCw } from 'lucide-react-native';
+import { Search, Star, Bell, ChevronDown, User, SlidersHorizontal, GlassWater, Clock, Globe, RefreshCw } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -184,7 +184,7 @@ export default function ExploreScreen() {
 
         {isError ? (
           <View className="items-center py-16 px-5">
-            <Wine size={48} color="#C9A227" />
+            <GlassWater size={48} color="#C9A227" />
             <Text className="text-[#1a1a1a] font-semibold text-lg mt-4 text-center">
               Could not load the sake list
             </Text>
@@ -219,7 +219,7 @@ export default function ExploreScreen() {
           </View>
         ) : filteredSake.length === 0 ? (
           <View className="items-center py-20 px-5">
-            <Wine size={48} color="#C9A227" />
+            <GlassWater size={48} color="#C9A227" />
             <Text className="text-[#1a1a1a] font-semibold text-lg mt-4">
               No sake found
             </Text>

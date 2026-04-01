@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Text, View, ScrollView, Pressable, Image } from 'react-native';
 import { router, Stack } from 'expo-router';
-import { ChevronLeft, Wine, Trash2, Clock } from 'lucide-react-native';
+import { ChevronLeft, GlassWater, Trash2, Clock } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useScanHistoryStore } from '@/lib/scan-history-store';
@@ -122,7 +122,7 @@ export default function ScanHistoryScreen() {
                         />
                       ) : (
                         <View className="flex-1 items-center justify-center">
-                          <Wine size={32} color="#C9A227" />
+                          <GlassWater size={32} color="#C9A227" />
                         </View>
                       )}
                     </View>

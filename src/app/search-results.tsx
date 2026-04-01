@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Text, View, ScrollView, Pressable, ActivityIndicator, TextInput } from 'react-native';
-import { ChevronLeft, Search, Star, Wine, SlidersHorizontal, X } from 'lucide-react-native';
+import { ChevronLeft, Search, Star, GlassWater, SlidersHorizontal, X } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -227,7 +227,7 @@ export default function SearchResultsScreen() {
           </View>
         ) : filteredSake.length === 0 ? (
           <View className="items-center py-20 px-5">
-            <Wine size={48} color="#C9A227" />
+            <GlassWater size={48} color="#C9A227" />
             <Text className="text-[#1a1a1a] font-semibold text-lg mt-4">
               No sake found
             </Text>

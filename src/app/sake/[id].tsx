@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   Text,
   View,
+  Image,
   ScrollView,
   Pressable,
   ActivityIndicator,
@@ -31,7 +32,7 @@ import {
   Home,
   Flame,
   ShoppingBag,
-  Wine,
+  GlassWater,
   User as UserIcon,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -94,7 +95,7 @@ export default function SakeDetailScreen() {
   if (isError) {
     return (
       <View className="flex-1 items-center justify-center px-5" style={{ backgroundColor: colors.background }}>
-        <Wine size={48} color={colors.primary} />
+        <GlassWater size={48} color={colors.primary} />
         <Text className="font-semibold text-lg mt-4 text-center" style={{ color: colors.text }}>
           Could not load this sake
         </Text>
@@ -120,7 +121,7 @@ export default function SakeDetailScreen() {
   if (!supabaseSake) {
     return (
       <View className="flex-1 items-center justify-center px-5" style={{ backgroundColor: colors.background }}>
-        <Wine size={48} color={colors.primary} />
+        <GlassWater size={48} color={colors.primary} />
         <Text className="font-semibold text-lg mt-4" style={{ color: colors.text }}>Sake not found</Text>
         <Text className="text-center mt-2" style={{ color: colors.textSecondary }}>
           This sake isn't in our database yet

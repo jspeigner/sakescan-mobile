@@ -23,7 +23,7 @@ import {
   Snowflake,
   Home,
   Flame,
-  Wine,
+  GlassWater,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -203,7 +203,7 @@ export default function ScanResultScreen({ sakeInfo, imageUri }: ScanResultScree
             />
           ) : (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-              <Wine size={80} color="#C9A227" />
+              <GlassWater size={80} color="#C9A227" />
             </View>
           )}
           {/* Bottom gradient fade into page background */}
