@@ -51,7 +51,7 @@ export default function SakeDetailScreen() {
   const insets = useSafeAreaInsets();
   const { user, isGuest } = useAuth();
   const { colors } = useTheme();
-  const [selectedServing, setSelectedServing] = useState<ServingTemp>('Chilled');
+  const [selectedServing, setSelectedServing] = useState<ServingTemp | null>(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
 
@@ -137,18 +137,43 @@ export default function SakeDetailScreen() {
     );
   }
 
-  // Map Supabase data to display format
+  // Parse the rich description to extract embedded metadata
+  const rawDesc = supabaseSake.description ?? '';
+  const descParts = rawDesc.split(/\n\n\*\*/);
+  const mainDescription = descParts[0]?.trim() || 'No description available.';
+
+  const extractField = (label: string): string | null => {
+    const part = descParts.find((p) => p.startsWith(`${label}:**`));
+    return part ? part.replace(`${label}:** `, '').trim() : null;
+  };
+
+  const tastingNotes = extractField('Tasting Notes');
+  const foodPairingsRaw = extractField('Food Pairings');
+  const foodPairings = foodPairingsRaw ? foodPairingsRaw.split(', ').filter(Boolean) : [];
+  const flavorProfileRaw = extractField('Flavor Profile');
+  const flavorProfile = flavorProfileRaw ? flavorProfileRaw.split(', ').filter(Boolean) : [];
+  const servingTempsRaw = extractField('Serving Temperature');
+  const servingTemps = servingTempsRaw ? servingTempsRaw.split(', ').filter(Boolean) : [];
+
   const sake = {
     id: supabaseSake.id,
     name: supabaseSake.name ?? 'Unknown',
+    nameJapanese: supabaseSake.name_japanese,
     sakeType: supabaseSake.type ?? 'Other',
-    description: supabaseSake.description ?? 'No description available.',
+    subtype: supabaseSake.subtype,
+    description: mainDescription,
     avgRating: supabaseSake.average_rating ?? 0,
     reviewCount: supabaseSake.total_ratings ?? 0,
     labelImageUrl: resolveSakeImageUrl(supabaseSake.image_url) ?? null,
     alcoholContent: supabaseSake.alcohol_percentage ? `${supabaseSake.alcohol_percentage}%` : 'N/A',
     riceMilling: supabaseSake.polishing_ratio ? `${supabaseSake.polishing_ratio}%` : undefined,
     riceType: supabaseSake.rice_variety ?? 'N/A',
+    smv: supabaseSake.smv,
+    acidity: supabaseSake.acidity,
+    tastingNotes,
+    foodPairings,
+    flavorProfile,
+    servingTemps,
   };
 
   const brewery = {
@@ -245,7 +270,7 @@ export default function SakeDetailScreen() {
       <ScrollView
         className="flex-1"
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
       >
         {/* Hero Image */}
         <Animated.View
@@ -290,10 +315,29 @@ export default function SakeDetailScreen() {
             </View>
           </View>
 
+          {/* Japanese name */}
+          {sake.nameJapanese && (
+            <Text className="text-lg mb-1" style={{ color: colors.textTertiary }}>
+              {sake.nameJapanese}
+            </Text>
+          )}
+
           {/* Brewery Info */}
-          <Text className="text-base mb-3" style={{ color: colors.textSecondary }}>
+          <Text className="text-base mb-1" style={{ color: colors.textSecondary }}>
             {brewery.name} • {brewery.region ? `${brewery.region}, ${brewery.country}` : brewery.country}
           </Text>
+
+          {/* Type badge row */}
+          <View className="flex-row items-center gap-2 mb-4">
+            <View className="px-3 py-1 rounded-full" style={{ backgroundColor: colors.primary }}>
+              <Text className="text-xs font-bold text-white">{sake.sakeType}</Text>
+            </View>
+            {sake.subtype && (
+              <View className="px-3 py-1 rounded-full" style={{ backgroundColor: colors.surfaceSecondary }}>
+                <Text className="text-xs font-semibold" style={{ color: colors.textSecondary }}>{sake.subtype}</Text>
+              </View>
+            )}
+          </View>
 
           {/* Rating */}
           <View className="flex-row items-center mb-6">
@@ -315,20 +359,69 @@ export default function SakeDetailScreen() {
           </View>
 
           {/* Specs Cards */}
-          <View className="flex-row mb-6">
-            <View className="flex-1 mr-3">
+          <View className="flex-row flex-wrap mb-6" style={{ gap: 12 }}>
+            <View style={{ width: '45%' }}>
               <Text className="text-xs font-medium mb-2 uppercase tracking-wide" style={{ color: colors.textSecondary }}>ABV</Text>
               <Text className="text-xl font-bold" style={{ color: colors.text }}>
                 {sake.alcoholContent}
               </Text>
             </View>
-            <View className="flex-1">
+            <View style={{ width: '45%' }}>
               <Text className="text-xs font-medium mb-2 uppercase tracking-wide" style={{ color: colors.textSecondary }}>Rice Type</Text>
               <Text className="text-xl font-bold" style={{ color: colors.text }}>
                 {sake.riceType}
               </Text>
             </View>
+            {sake.riceMilling && (
+              <View style={{ width: '45%' }}>
+                <Text className="text-xs font-medium mb-2 uppercase tracking-wide" style={{ color: colors.textSecondary }}>Polishing</Text>
+                <Text className="text-xl font-bold" style={{ color: colors.text }}>
+                  {sake.riceMilling}
+                </Text>
+              </View>
+            )}
+            {sake.smv != null && (
+              <View style={{ width: '45%' }}>
+                <Text className="text-xs font-medium mb-2 uppercase tracking-wide" style={{ color: colors.textSecondary }}>SMV</Text>
+                <Text className="text-xl font-bold" style={{ color: colors.text }}>
+                  {sake.smv > 0 ? `+${sake.smv}` : sake.smv.toString()}
+                </Text>
+              </View>
+            )}
+            {sake.acidity != null && (
+              <View style={{ width: '45%' }}>
+                <Text className="text-xs font-medium mb-2 uppercase tracking-wide" style={{ color: colors.textSecondary }}>Acidity</Text>
+                <Text className="text-xl font-bold" style={{ color: colors.text }}>
+                  {sake.acidity}
+                </Text>
+              </View>
+            )}
           </View>
+
+          {/* Flavor Profile */}
+          {sake.flavorProfile.length > 0 && (
+            <View className="mb-6">
+              <Text className="text-xs font-medium mb-3 uppercase tracking-wide" style={{ color: colors.textSecondary }}>
+                Flavor Profile
+              </Text>
+              <View className="flex-row flex-wrap gap-2">
+                {sake.flavorProfile.map((flavor, idx) => (
+                  <View
+                    key={`fp-${idx}`}
+                    className="px-4 py-2 rounded-full"
+                    style={{ backgroundColor: idx === 0 ? colors.primary : colors.surfaceSecondary }}
+                  >
+                    <Text
+                      className="text-sm font-medium"
+                      style={{ color: idx === 0 ? '#FFFFFF' : colors.textSecondary }}
+                    >
+                      {flavor}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
 
           {/* Recommended Serving */}
           <View className="mb-6">
@@ -336,78 +429,78 @@ export default function SakeDetailScreen() {
               Recommended Serving
             </Text>
             <View className="flex-row gap-3">
-              <Pressable
-                onPress={() => handleServingPress('Chilled')}
-                className="flex-1 items-center py-4 rounded-2xl"
-                style={{
-                  backgroundColor: selectedServing === 'Chilled' ? colors.background : 'transparent',
-                  borderWidth: 2,
-                  borderColor: selectedServing === 'Chilled' ? colors.primary : colors.border,
-                }}
-              >
-                <Snowflake
-                  size={24}
-                  color={selectedServing === 'Chilled' ? colors.primary : colors.textSecondary}
-                />
-                <Text
-                  className="mt-2 text-sm font-medium"
-                  style={{ color: selectedServing === 'Chilled' ? colors.primary : colors.textSecondary }}
-                >
-                  Chilled
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => handleServingPress('Room')}
-                className="flex-1 items-center py-4 rounded-2xl"
-                style={{
-                  backgroundColor: selectedServing === 'Room' ? colors.background : 'transparent',
-                  borderWidth: 2,
-                  borderColor: selectedServing === 'Room' ? colors.primary : colors.border,
-                }}
-              >
-                <Home
-                  size={24}
-                  color={selectedServing === 'Room' ? colors.primary : colors.textSecondary}
-                />
-                <Text
-                  className="mt-2 text-sm font-medium"
-                  style={{ color: selectedServing === 'Room' ? colors.primary : colors.textSecondary }}
-                >
-                  Room
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => handleServingPress('Warm')}
-                className="flex-1 items-center py-4 rounded-2xl"
-                style={{
-                  backgroundColor: selectedServing === 'Warm' ? colors.background : 'transparent',
-                  borderWidth: 2,
-                  borderColor: selectedServing === 'Warm' ? colors.primary : colors.border,
-                }}
-              >
-                <Flame
-                  size={24}
-                  color={selectedServing === 'Warm' ? colors.primary : colors.textSecondary}
-                />
-                <Text
-                  className="mt-2 text-sm font-medium"
-                  style={{ color: selectedServing === 'Warm' ? colors.primary : colors.textSecondary }}
-                >
-                  Warm
-                </Text>
-              </Pressable>
+              {(['Chilled', 'Room', 'Warm'] as const).map((temp) => {
+                const isRecommended = sake.servingTemps.some((s) => s.toLowerCase() === temp.toLowerCase());
+                const isSelected = selectedServing === temp;
+                const active = isSelected || (selectedServing === null && isRecommended);
+                const Icon = temp === 'Chilled' ? Snowflake : temp === 'Warm' ? Flame : Home;
+                return (
+                  <Pressable
+                    key={temp}
+                    onPress={() => handleServingPress(temp)}
+                    className="flex-1 items-center py-4 rounded-2xl"
+                    style={{
+                      backgroundColor: active ? colors.background : 'transparent',
+                      borderWidth: 2,
+                      borderColor: active ? colors.primary : colors.border,
+                    }}
+                  >
+                    <Icon size={24} color={active ? colors.primary : colors.textSecondary} />
+                    <Text
+                      className="mt-2 text-sm font-medium"
+                      style={{ color: active ? colors.primary : colors.textSecondary }}
+                    >
+                      {temp}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
           </View>
 
-          {/* History & Tasting Notes */}
+          {/* About */}
           {sake.description && (
             <View className="mb-6">
               <Text className="text-xs font-medium mb-3 uppercase tracking-wide" style={{ color: colors.textSecondary }}>
-                History & Tasting Notes
+                About This Sake
               </Text>
               <Text className="text-base leading-7" style={{ color: colors.text }}>
                 {sake.description}
               </Text>
+            </View>
+          )}
+
+          {/* Tasting Notes */}
+          {sake.tastingNotes && (
+            <View className="mb-6">
+              <Text className="text-xs font-medium mb-3 uppercase tracking-wide" style={{ color: colors.textSecondary }}>
+                Tasting Notes
+              </Text>
+              <Text className="text-base leading-7" style={{ color: colors.text }}>
+                {sake.tastingNotes}
+              </Text>
+            </View>
+          )}
+
+          {/* Food Pairings */}
+          {sake.foodPairings.length > 0 && (
+            <View className="mb-6">
+              <Text className="text-xs font-medium mb-3 uppercase tracking-wide" style={{ color: colors.textSecondary }}>
+                Food Pairings
+              </Text>
+              <View className="flex-row flex-wrap gap-2">
+                {sake.foodPairings.map((food, idx) => (
+                  <View
+                    key={`fp-${idx}`}
+                    className="px-4 py-2 rounded-full"
+                    style={{ backgroundColor: colors.surfaceSecondary }}
+                  >
+                    <Text className="text-sm" style={{ color: colors.textSecondary }}>
+                      {food}
+                    </Text>
+                  </View>
+                ))}
+              </View>
             </View>
           )}
 
@@ -461,35 +554,6 @@ export default function SakeDetailScreen() {
         </Animated.View>
       </ScrollView>
 
-      {/* Fixed Bottom Button */}
-      <View
-        className="absolute bottom-0 left-0 right-0 px-5 py-4"
-        style={{
-          paddingBottom: insets.bottom + 16,
-          backgroundColor: colors.background,
-          borderTopWidth: 1,
-          borderTopColor: colors.border,
-        }}
-      >
-        <Pressable
-          onPress={handleWhereToBuy}
-          disabled={isLoadingLocation}
-          className="flex-row items-center justify-center py-4 rounded-2xl active:scale-98"
-          style={{ backgroundColor: colors.primary }}
-        >
-          {isLoadingLocation ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : (
-            <>
-              <ShoppingBag size={20} color="#FFFFFF" />
-              <Text className="text-white text-base font-semibold ml-2">
-                Where to Buy
-              </Text>
-            </>
-          )}
-        </Pressable>
-      </View>
-
       {/* More Menu Modal — single flex root so overlay + sheet layout correctly (B01) */}
       <Modal
         visible={showMoreMenu}
@@ -523,6 +587,29 @@ export default function SakeDetailScreen() {
               marginBottom: 16,
             }}
           />
+          <Pressable
+            onPress={() => {
+              setShowMoreMenu(false);
+              handleWhereToBuy();
+            }}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingHorizontal: 20,
+              paddingVertical: 16,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border,
+            }}
+          >
+            {isLoadingLocation ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <ShoppingBag size={22} color={colors.primary} />
+            )}
+            <Text style={{ color: colors.text, fontSize: 16, fontWeight: '500', marginLeft: 14 }}>
+              Where to Buy
+            </Text>
+          </Pressable>
           <Pressable
             onPress={handleShare}
             style={{

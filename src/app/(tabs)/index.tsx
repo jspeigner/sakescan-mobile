@@ -18,11 +18,19 @@ import { useTheme } from '@/lib/theme-context';
 import { useUserScans, useSakeList } from '@/lib/supabase-hooks';
 import { resolveSakeImageUrl } from '@/lib/supabase';
 import { SakeImage } from '@/components/SakeImage';
+import { useGuestUsageStore, FREE_SCAN_LIMIT } from '@/lib/guest-usage-store';
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const { user, session, isGuest } = useAuth();
+  const canScanLabel = useGuestUsageStore((s) => s.canScanLabel);
+  const remainingFreeScans = useGuestUsageStore((s) => s.remainingFreeScans);
+  const loadUsage = useGuestUsageStore((s) => s.loadUsage);
+
+  useEffect(() => {
+    loadUsage();
+  }, [loadUsage]);
 
   // Entrance animations
   const headerOpacity = useSharedValue(0);
@@ -82,17 +90,18 @@ export default function HomeScreen() {
   const handleScanPress = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    // Check if user is signed in
-    if (!session?.access_token || isGuest) {
-      Alert.alert(
-        'Sign In Required',
-        'You need to sign in to use the scan feature. Please create an account or sign in from the Profile tab.',
-        [
-          { text: 'Go to Profile', onPress: () => router.push('/profile') },
-          { text: 'Cancel', style: 'cancel' },
-        ]
-      );
-      return;
+    if (isGuest && !session?.access_token) {
+      if (!canScanLabel()) {
+        Alert.alert(
+          'Free Scans Used Up',
+          `You've used all ${FREE_SCAN_LIMIT} free label scans. Create an account to keep scanning and unlock the full menu scanner.`,
+          [
+            { text: 'Sign Up', onPress: () => router.push('/welcome') },
+            { text: 'Not Now', style: 'cancel' },
+          ]
+        );
+        return;
+      }
     }
 
     router.push('/camera');

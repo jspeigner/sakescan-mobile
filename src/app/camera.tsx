@@ -12,29 +12,42 @@ import Animated, {
   interpolate,
   cancelAnimation,
 } from 'react-native-reanimated';
-import { ChevronLeft, Info, Image as ImageIcon, Zap } from 'lucide-react-native';
+import { ChevronLeft, Info, Image as ImageIcon, Zap, BookOpen, ScanLine } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
-import { scanSakeLabel } from '@/lib/openai-scan';
+import { scanSakeLabel, scanSakeMenu } from '@/lib/openai-scan';
+import { useAuth } from '@/lib/auth-context';
+import { useGuestUsageStore } from '@/lib/guest-usage-store';
+
+type ScanMode = 'label' | 'menu';
 
 // Height of the scan frame (must match styles.frame height)
 const FRAME_HEIGHT = 380;
 
-const SCAN_STAGES = [
+const LABEL_STAGES = [
   { threshold: 0, label: 'Capturing label...' },
   { threshold: 20, label: 'Identifying sake...' },
   { threshold: 50, label: 'Analyzing characteristics...' },
   { threshold: 80, label: 'Finishing up...' },
 ];
 
-function getScanStage(progress: number): string {
-  for (let i = SCAN_STAGES.length - 1; i >= 0; i--) {
-    if (progress >= SCAN_STAGES[i].threshold) return SCAN_STAGES[i].label;
+const MENU_STAGES = [
+  { threshold: 0, label: 'Reading menu...' },
+  { threshold: 15, label: 'Identifying sakes...' },
+  { threshold: 40, label: 'Extracting prices...' },
+  { threshold: 65, label: 'Analyzing flavor profiles...' },
+  { threshold: 85, label: 'Finishing up...' },
+];
+
+function getScanStage(progress: number, mode: ScanMode): string {
+  const stages = mode === 'menu' ? MENU_STAGES : LABEL_STAGES;
+  for (let i = stages.length - 1; i >= 0; i--) {
+    if (progress >= stages[i].threshold) return stages[i].label;
   }
-  return SCAN_STAGES[0].label;
+  return stages[0].label;
 }
 
 export default function CameraScreen() {
@@ -46,7 +59,10 @@ export default function CameraScreen() {
   const [flashOn, setFlashOn] = useState(false);
   const [capturedImageUri, setCapturedImageUri] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [scanMode, setScanMode] = useState<ScanMode>('label');
   const cameraRef = useRef<CameraView>(null);
+  const { isGuest, session } = useAuth();
+  const incrementLabelScan = useGuestUsageStore((s) => s.incrementLabelScan);
 
   // Reanimated values
   const scanLineY = useSharedValue(0);          // sweeping scan line position (0-1)
@@ -99,20 +115,22 @@ export default function CameraScreen() {
     progressWidth.value = withTiming(scanProgress / 100, { duration: 120 });
   }, [scanProgress, progressWidth]);
 
-  // Progress ticker
+  // Progress ticker — menu scans are slower (more tokens to generate)
   useEffect(() => {
     if (isScanning) {
+      const step = scanMode === 'menu' ? 2 : 3;
+      const ms = scanMode === 'menu' ? 200 : 150;
       const interval = setInterval(() => {
         setScanProgress((prev) => {
           if (prev >= 95) { clearInterval(interval); return 95; }
-          return prev + 3;
+          return prev + step;
         });
-      }, 150);
+      }, ms);
       return () => clearInterval(interval);
     } else {
       setScanProgress(0);
     }
-  }, [isScanning]);
+  }, [isScanning, scanMode]);
 
   // Animated styles
   const scanLineStyle = useAnimatedStyle(() => ({
@@ -164,34 +182,67 @@ export default function CameraScreen() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
-      console.log('🔍 Starting sake label scan with OpenAI...');
+      if (scanMode === 'menu') {
+        console.log('📋 Starting sake menu scan with OpenAI...');
+        const result = await scanSakeMenu(base64Image);
 
-      // Call OpenAI directly - no Edge Functions, no Supabase complexity
-      const result = await scanSakeLabel(base64Image);
+        if (result.success && result.sakes && result.sakes.length > 0) {
+          console.log(`✅ Found ${result.sakes.length} sakes on menu`);
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-      if (result.success && result.sake) {
-        console.log('✅ Successfully scanned:', result.sake.name);
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          setScanProgress(100);
+          successFlash.value = withSequence(
+            withTiming(0.6, { duration: 80 }),
+            withTiming(0, { duration: 300 }),
+          );
+          await new Promise(r => setTimeout(r, 350));
 
-        // Success flash then navigate
-        setScanProgress(100);
-        successFlash.value = withSequence(
-          withTiming(0.6, { duration: 80 }),
-          withTiming(0, { duration: 300 }),
-        );
-        await new Promise(r => setTimeout(r, 350));
-
-        router.replace({
-          pathname: '/scan-result',
-          params: {
-            sakeData: JSON.stringify(result.sake),
-            imageUri: imageUri || '',
-          },
-        });
+          router.replace({
+            pathname: '/menu-results',
+            params: { menuData: JSON.stringify(result.sakes) },
+          });
+        } else {
+          console.error('❌ Menu scan failed:', result.error);
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          setErrorMessage(result.error || 'Could not read the menu. Try a clearer photo.');
+        }
       } else {
-        console.error('❌ Scan failed:', result.error);
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        setErrorMessage(result.error || 'Could not identify the label. Try a clearer photo.');
+        console.log('🔍 Starting sake label scan with OpenAI...');
+        const result = await scanSakeLabel(base64Image);
+
+        if (result.success && result.sake) {
+          console.log('✅ Successfully scanned:', result.sake.name);
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+          if (isGuest && !session?.access_token) {
+            await incrementLabelScan();
+          }
+
+          setScanProgress(100);
+          successFlash.value = withSequence(
+            withTiming(0.6, { duration: 80 }),
+            withTiming(0, { duration: 300 }),
+          );
+          await new Promise(r => setTimeout(r, 350));
+
+          router.replace({
+            pathname: '/scan-result',
+            params: {
+              sakeData: JSON.stringify(result.sake),
+              imageUri: imageUri || '',
+            },
+          });
+        } else {
+          console.error('❌ Scan failed:', result.error);
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          router.replace({
+            pathname: '/unmatched-scan',
+            params: {
+              errorMessage: result.error || 'Could not identify this sake label.',
+              imageUri: imageUri || '',
+            },
+          });
+        }
       }
     } catch (error: any) {
       console.error('Scan error:', error);
@@ -282,7 +333,19 @@ export default function CameraScreen() {
     setFlashOn(!flashOn);
   };
 
-  const stageText = getScanStage(scanProgress);
+  const toggleScanMode = async () => {
+    if (isScanning) return;
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    const wantMenu = scanMode === 'label';
+    if (wantMenu && (isGuest || !session?.access_token)) {
+      router.push('/paywall');
+      return;
+    }
+    setScanMode((prev) => (prev === 'label' ? 'menu' : 'label'));
+  };
+
+  const stageText = getScanStage(scanProgress, scanMode);
 
   return (
     <View style={styles.container}>
@@ -317,12 +380,56 @@ export default function CameraScreen() {
             <ChevronLeft size={24} color="#FFFFFF" />
           </Pressable>
           <Text style={styles.headerTitle}>
-            {isScanning ? 'Scanning...' : 'Scan Sake Label'}
+            {isScanning
+              ? 'Scanning...'
+              : scanMode === 'menu'
+                ? 'Scan Sake Menu'
+                : 'Scan Sake Label'}
           </Text>
           <Pressable style={styles.headerButton}>
             <Info size={22} color="#FFFFFF" />
           </Pressable>
         </BlurView>
+
+        {/* Mode toggle — label vs menu */}
+        {!isScanning && (
+          <View style={styles.modeToggleRow}>
+            <Pressable
+              onPress={toggleScanMode}
+              style={[
+                styles.modeToggleButton,
+                scanMode === 'label' && styles.modeToggleActive,
+              ]}
+            >
+              <ScanLine size={16} color={scanMode === 'label' ? '#C9A227' : '#FFFFFF'} />
+              <Text
+                style={[
+                  styles.modeToggleText,
+                  scanMode === 'label' && styles.modeToggleTextActive,
+                ]}
+              >
+                Label
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={toggleScanMode}
+              style={[
+                styles.modeToggleButton,
+                scanMode === 'menu' && styles.modeToggleActive,
+              ]}
+            >
+              <BookOpen size={16} color={scanMode === 'menu' ? '#C9A227' : '#FFFFFF'} />
+              <Text
+                style={[
+                  styles.modeToggleText,
+                  scanMode === 'menu' && styles.modeToggleTextActive,
+                ]}
+              >
+                Menu
+              </Text>
+            </Pressable>
+          </View>
+        )}
 
         {/* Scanning Frame */}
         <View style={styles.frameContainer}>
@@ -366,7 +473,9 @@ export default function CameraScreen() {
             tint="dark"
             style={[styles.analyzingPanel, { paddingBottom: insets.bottom + 32 }]}
           >
-            <Text style={styles.analyzingTitle}>Analyzing with AI</Text>
+            <Text style={styles.analyzingTitle}>
+              {scanMode === 'menu' ? 'Reading Menu' : 'Analyzing with AI'}
+            </Text>
             <Text style={styles.analyzingStage}>{stageText}</Text>
 
             {/* Thick Vivino-style progress bar */}
@@ -379,7 +488,11 @@ export default function CameraScreen() {
         ) : (
           <>
             <View style={styles.instructionsContainer}>
-              <Text style={styles.instructionText}>Position label within frame</Text>
+              <Text style={styles.instructionText}>
+                {scanMode === 'menu'
+                  ? 'Point camera at the sake menu'
+                  : 'Position label within frame'}
+              </Text>
             </View>
 
             {/* Bottom Controls — frosted glass */}
@@ -472,6 +585,35 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 17,
     fontWeight: '600',
+  },
+  modeToggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+  },
+  modeToggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  modeToggleActive: {
+    backgroundColor: 'rgba(201, 162, 39, 0.25)',
+    borderWidth: 1,
+    borderColor: 'rgba(201, 162, 39, 0.5)',
+  },
+  modeToggleText: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  modeToggleTextActive: {
+    color: '#C9A227',
   },
   frameContainer: {
     flex: 1,

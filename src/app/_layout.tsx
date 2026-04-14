@@ -138,6 +138,22 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
           name="stores"
           options={{ headerShown: false, animation: 'slide_from_right' }}
         />
+        <Stack.Screen
+          name="menu-results"
+          options={{ headerShown: false, animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="paywall"
+          options={{
+            headerShown: false,
+            presentation: 'modal',
+            animation: 'slide_from_bottom',
+          }}
+        />
+        <Stack.Screen
+          name="unmatched-scan"
+          options={{ headerShown: false, animation: 'slide_from_right' }}
+        />
       </Stack>
     </ThemeProvider>
   );
