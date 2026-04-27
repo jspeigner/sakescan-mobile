@@ -50,6 +50,9 @@ interface ScanResultScreenProps {
     alcoholPercentage?: number;
     flavorProfile?: string[];
     servingTemperature?: string[];
+    confidenceScore?: number;
+    scanQualityHint?: 'high' | 'medium' | 'low';
+    qualityReasons?: string[];
   };
   imageUri?: string;
 }
@@ -79,6 +82,12 @@ export default function ScanResultScreen({ sakeInfo, imageUri }: ScanResultScree
 
   const createSake = useCreateSake();
   const createScan = useCreateScan();
+  const qualityTone =
+    sakeInfo.scanQualityHint === 'high'
+      ? { bg: '#EAF9EE', border: '#B7E6C2', text: '#1F7A3C' }
+      : sakeInfo.scanQualityHint === 'medium'
+        ? { bg: '#FFF6E8', border: '#F3D7A6', text: '#9B6A19' }
+        : { bg: '#FDECEC', border: '#F2B8B5', text: '#A0352F' };
 
   // Save scan to history AND Supabase when component mounts
   useEffect(() => {
@@ -249,6 +258,32 @@ export default function ScanResultScreen({ sakeInfo, imageUri }: ScanResultScree
               </Text>
             </View>
           </View>
+
+          {(sakeInfo.scanQualityHint || sakeInfo.confidenceScore != null) && (
+            <View
+              className="mb-6 rounded-2xl px-4 py-3"
+              style={{
+                backgroundColor: qualityTone.bg,
+                borderWidth: 1,
+                borderColor: qualityTone.border,
+              }}
+            >
+              <Text style={{ color: qualityTone.text, fontSize: 13, fontWeight: '700' }}>
+                Scan quality: {sakeInfo.scanQualityHint ?? 'unknown'}
+                {sakeInfo.confidenceScore != null ? ` (${sakeInfo.confidenceScore}%)` : ''}
+              </Text>
+              {sakeInfo.scanQualityHint !== 'high' && (
+                <Text className="mt-1 text-sm text-[#6B6B6B]">
+                  If details look off, retake a closer photo with better lighting.
+                </Text>
+              )}
+              {sakeInfo.qualityReasons && sakeInfo.qualityReasons.length > 0 && (
+                <Text className="mt-1 text-xs text-[#7B7B7B]">
+                  Missing details: {sakeInfo.qualityReasons.join(' • ')}
+                </Text>
+              )}
+            </View>
+          )}
 
           {/* Specs Cards */}
           <View className="flex-row mb-6">

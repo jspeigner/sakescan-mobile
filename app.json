@@ -20,6 +20,11 @@
     },
     "android": {
       "edgeToEdgeEnabled": true,
+      "package": "com.sakescan",
+      "adaptiveIcon": {
+        "foregroundImage": "./icon.png",
+        "backgroundColor": "#FAFAF8"
+      },
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION"

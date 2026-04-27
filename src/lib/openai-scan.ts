@@ -14,6 +14,9 @@ export interface SakeInfo {
   alcoholPercentage?: number;
   flavorProfile?: string[];
   servingTemperature?: string[];
+  confidenceScore?: number;
+  scanQualityHint?: 'high' | 'medium' | 'low';
+  qualityReasons?: string[];
 }
 
 export interface ScanResult {
@@ -40,6 +43,243 @@ export interface MenuScanResult {
   success: boolean;
   sakes?: MenuSakeItem[];
   error?: string;
+}
+
+interface RawMenuSakeItem {
+  name?: unknown;
+  nameJapanese?: unknown;
+  brewery?: unknown;
+  type?: unknown;
+  price?: unknown;
+  size?: unknown;
+  description?: unknown;
+  flavorProfile?: unknown;
+  servingTemperature?: unknown;
+  alcoholPercentage?: unknown;
+  polishingRatio?: unknown;
+}
+
+interface RawLabelSakeInfo {
+  name?: unknown;
+  nameJapanese?: unknown;
+  brewery?: unknown;
+  type?: unknown;
+  subtype?: unknown;
+  prefecture?: unknown;
+  region?: unknown;
+  description?: unknown;
+  tastingNotes?: unknown;
+  foodPairings?: unknown;
+  riceVariety?: unknown;
+  polishingRatio?: unknown;
+  alcoholPercentage?: unknown;
+  flavorProfile?: unknown;
+  servingTemperature?: unknown;
+}
+
+function toOptionalString(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function toOptionalNumber(value: unknown, minExclusive?: number): number | undefined {
+  const isAllowed = (num: number) =>
+    minExclusive == null ? Number.isFinite(num) : Number.isFinite(num) && num > minExclusive;
+
+  if (typeof value === 'number' && isAllowed(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value);
+    if (isAllowed(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+function toOptionalStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const cleaned = value
+    .map((item) => toOptionalString(item))
+    .filter((item): item is string => Boolean(item));
+  return cleaned.length > 0 ? cleaned : undefined;
+}
+
+function normalizeMenuSakeItem(item: RawMenuSakeItem): MenuSakeItem | null {
+  const name = toKnownOptionalString(item.name);
+  if (!name) return null;
+
+  return {
+    name,
+    nameJapanese: toKnownOptionalString(item.nameJapanese),
+    brewery: toKnownOptionalString(item.brewery),
+    type: toKnownOptionalString(item.type),
+    price: toKnownOptionalString(item.price),
+    size: toKnownOptionalString(item.size),
+    description: toKnownOptionalString(item.description),
+    flavorProfile: toOptionalStringArray(item.flavorProfile),
+    servingTemperature: toOptionalStringArray(item.servingTemperature),
+    alcoholPercentage: toOptionalNumber(item.alcoholPercentage, 0),
+    polishingRatio: toOptionalNumber(item.polishingRatio, 0),
+  };
+}
+
+function dedupeMenuSakes(items: MenuSakeItem[]): MenuSakeItem[] {
+  const seen = new Set<string>();
+  const deduped: MenuSakeItem[] = [];
+  for (const item of items) {
+    const key = [
+      item.name.toLowerCase(),
+      (item.price ?? '').toLowerCase(),
+      (item.size ?? '').toLowerCase(),
+    ].join('|');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(item);
+  }
+  return deduped;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isUnknownMarker(value: string | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.toLowerCase();
+  return (
+    normalized === 'unknown' ||
+    normalized === 'n/a' ||
+    normalized === 'none' ||
+    normalized === 'not specified' ||
+    normalized === 'unspecified' ||
+    normalized === 'not listed' ||
+    normalized === 'not available'
+  );
+}
+
+function toKnownOptionalString(value: unknown): string | undefined {
+  const str = toOptionalString(value);
+  if (!str || isUnknownMarker(str)) return undefined;
+  return str;
+}
+
+function isLikelyMenuItem(value: unknown): value is RawMenuSakeItem {
+  return isRecord(value) && typeof value.name === 'string';
+}
+
+function findMenuItemsInUnknown(value: unknown, depth = 0): RawMenuSakeItem[] {
+  if (depth > 6) return [];
+
+  if (Array.isArray(value)) {
+    if (value.every((item) => isLikelyMenuItem(item))) {
+      return value;
+    }
+    for (const item of value) {
+      const nested = findMenuItemsInUnknown(item, depth + 1);
+      if (nested.length > 0) return nested;
+    }
+    return [];
+  }
+
+  if (!isRecord(value)) return [];
+
+  if (Array.isArray(value.sakes)) {
+    return value.sakes.filter((item): item is RawMenuSakeItem => isLikelyMenuItem(item));
+  }
+
+  for (const nestedValue of Object.values(value)) {
+    const nested = findMenuItemsInUnknown(nestedValue, depth + 1);
+    if (nested.length > 0) return nested;
+  }
+
+  return [];
+}
+
+function findLabelInfoInUnknown(value: unknown, depth = 0): RawLabelSakeInfo | null {
+  if (depth > 6) return null;
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const nested = findLabelInfoInUnknown(item, depth + 1);
+      if (nested) return nested;
+    }
+    return null;
+  }
+
+  if (!isRecord(value)) return null;
+
+  if (typeof value.name === 'string' && typeof value.brewery === 'string') {
+    return value as RawLabelSakeInfo;
+  }
+
+  for (const nestedValue of Object.values(value)) {
+    const nested = findLabelInfoInUnknown(nestedValue, depth + 1);
+    if (nested) return nested;
+  }
+
+  return null;
+}
+
+function normalizeLabelSakeInfo(item: RawLabelSakeInfo): SakeInfo | null {
+  const name = toKnownOptionalString(item.name);
+  const brewery = toKnownOptionalString(item.brewery);
+  if (!name || !brewery) {
+    return null;
+  }
+
+  const type = toKnownOptionalString(item.type);
+  const description = toKnownOptionalString(item.description);
+
+  return {
+    name,
+    brewery,
+    type: type ?? 'Other',
+    description: description ?? 'No description available.',
+    nameJapanese: toKnownOptionalString(item.nameJapanese),
+    subtype: toKnownOptionalString(item.subtype),
+    prefecture: toKnownOptionalString(item.prefecture),
+    region: toKnownOptionalString(item.region),
+    tastingNotes: toKnownOptionalString(item.tastingNotes),
+    foodPairings: toOptionalStringArray(item.foodPairings),
+    riceVariety: toKnownOptionalString(item.riceVariety),
+    polishingRatio: toOptionalNumber(item.polishingRatio, 0),
+    alcoholPercentage: toOptionalNumber(item.alcoholPercentage, 0),
+    flavorProfile: toOptionalStringArray(item.flavorProfile),
+    servingTemperature: toOptionalStringArray(item.servingTemperature),
+  };
+}
+
+function getLabelQualityMetrics(sakeInfo: SakeInfo): {
+  confidenceScore: number;
+  scanQualityHint: 'high' | 'medium' | 'low';
+  qualityReasons: string[];
+} {
+  let score = 45; // name + brewery baseline
+  const reasons: string[] = [];
+
+  if (sakeInfo.type && sakeInfo.type !== 'Other') score += 8;
+  if (sakeInfo.prefecture || sakeInfo.region) score += 8;
+  if (sakeInfo.nameJapanese) score += 5;
+  if (sakeInfo.tastingNotes) score += 8;
+  if (sakeInfo.foodPairings?.length) score += 8;
+  if (sakeInfo.flavorProfile?.length) score += 8;
+  if (sakeInfo.servingTemperature?.length) score += 5;
+  if (sakeInfo.polishingRatio) score += 5;
+  if (sakeInfo.alcoholPercentage) score += 5;
+
+  if (!sakeInfo.flavorProfile?.length) reasons.push('No flavor profile detected');
+  if (!sakeInfo.tastingNotes) reasons.push('No tasting notes detected');
+  if (!sakeInfo.prefecture && !sakeInfo.region) reasons.push('No region details detected');
+  if (!sakeInfo.polishingRatio && !sakeInfo.alcoholPercentage) reasons.push('No numeric specs detected');
+
+  const confidenceScore = Math.max(0, Math.min(100, score));
+  const scanQualityHint =
+    confidenceScore >= 75 ? 'high' : confidenceScore >= 55 ? 'medium' : 'low';
+
+  return {
+    confidenceScore,
+    scanQualityHint,
+    qualityReasons: reasons.slice(0, 2),
+  };
 }
 
 export async function scanSakeLabel(imageBase64: string): Promise<ScanResult> {
@@ -73,31 +313,14 @@ export async function scanSakeLabel(imageBase64: string): Promise<ScanResult> {
             content: [
               {
                 type: 'text',
-                text: `Analyze this sake bottle label and extract information. Return ONLY a JSON object (no markdown, no extra text) with this structure:
+                text: `You are reading one sake bottle label photo.
 
-{
-  "name": "English name of the sake",
-  "nameJapanese": "Japanese name if visible",
-  "brewery": "Brewery name",
-  "type": "Main type (Junmai, Ginjo, Daiginjo, Honjozo, or Other)",
-  "subtype": "Subtype if applicable",
-  "prefecture": "Prefecture in Japan (e.g., Niigata, Kyoto)",
-  "region": "Region (e.g., Kanto, Kansai)",
-  "description": "2-3 sentence description of this sake",
-  "tastingNotes": "What it tastes like - flavors, aroma, finish",
-  "foodPairings": ["Sushi", "Tempura", "Grilled fish"],
-  "riceVariety": "Type of rice used",
-  "polishingRatio": 50,
-  "alcoholPercentage": 15.5,
-  "flavorProfile": ["Crisp", "Floral", "Smooth"],
-  "servingTemperature": ["Chilled", "Room"]
-}
-
-Important:
-- Be detailed and informative
-- If you can't determine something, omit that field
-- The description should explain what makes this sake special
-- Return ONLY valid JSON, no markdown formatting`,
+Extract label information from visible text only:
+- Include the primary sake name and brewery when visible
+- Use type values like Junmai, Ginjo, Daiginjo, Honjozo, Nigori, Sparkling, Futsushu, Other
+- Omit fields you cannot determine (do not invent)
+- Keep description concise (1-2 sentences)
+- Return factual output only`,
               },
               {
                 type: 'image_url',
@@ -108,8 +331,45 @@ Important:
             ],
           },
         ],
-        max_tokens: 1000,
-        temperature: 0.7,
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: 'sake_label',
+            schema: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                name: { type: 'string' },
+                nameJapanese: { type: 'string' },
+                brewery: { type: 'string' },
+                type: { type: 'string' },
+                subtype: { type: 'string' },
+                prefecture: { type: 'string' },
+                region: { type: 'string' },
+                description: { type: 'string' },
+                tastingNotes: { type: 'string' },
+                foodPairings: {
+                  type: 'array',
+                  items: { type: 'string' },
+                },
+                riceVariety: { type: 'string' },
+                polishingRatio: { type: 'number' },
+                alcoholPercentage: { type: 'number' },
+                flavorProfile: {
+                  type: 'array',
+                  items: { type: 'string' },
+                },
+                servingTemperature: {
+                  type: 'array',
+                  items: { type: 'string' },
+                },
+              },
+              required: ['name', 'brewery'],
+            },
+          },
+        },
+        max_tokens: 1200,
+        temperature: 0.2,
       }),
     });
 
@@ -141,7 +401,8 @@ Important:
     }
 
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
+    const choice = data.choices?.[0];
+    const content = choice?.message?.content;
 
     if (!content) {
       console.error('No content in OpenAI response:', data);
@@ -151,16 +412,18 @@ Important:
       };
     }
 
-    console.log('📝 Raw OpenAI response:', content);
+    if (choice?.finish_reason === 'length') {
+      return {
+        success: false,
+        error: 'This label photo has too much text to parse in one pass. Move closer and focus on the bottle label.',
+      };
+    }
 
-    // Parse the JSON response (handle markdown code blocks if present)
-    let sakeInfo: SakeInfo;
+    let rawInfo: RawLabelSakeInfo | null = null;
     try {
-      // Try to extract JSON from markdown code blocks
-      const jsonMatch = content.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/) || content.match(/\{[\s\S]*\}/);
-      const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : content;
-      sakeInfo = JSON.parse(jsonStr.trim());
-    } catch (parseError) {
+      const parsed = JSON.parse(content.trim()) as unknown;
+      rawInfo = findLabelInfoInUnknown(parsed);
+    } catch {
       console.error('Failed to parse OpenAI response:', content);
       return {
         success: false,
@@ -168,8 +431,22 @@ Important:
       };
     }
 
-    // Validate we have at least name and brewery
-    if (!sakeInfo.name || !sakeInfo.brewery) {
+    if (!rawInfo) {
+      return {
+        success: false,
+        error: 'Could not identify sake information. Please make sure the label is clearly visible.'
+      };
+    }
+
+    const normalized = normalizeLabelSakeInfo(rawInfo);
+    const quality = normalized ? getLabelQualityMetrics(normalized) : null;
+    const sakeInfo = normalized
+      ? {
+          ...normalized,
+          ...quality,
+        }
+      : null;
+    if (!sakeInfo) {
       return {
         success: false,
         error: 'Could not identify sake information. Please make sure the label is clearly visible.'
@@ -221,33 +498,16 @@ export async function scanSakeMenu(imageBase64: string): Promise<MenuScanResult>
             content: [
               {
                 type: 'text',
-                text: `This is a photo of a sake menu from a restaurant or bar. Extract EVERY sake listed on the menu. Return ONLY a JSON array (no markdown, no extra text) where each item has this structure:
+                text: `You are reading a restaurant sake menu photo. Extract EVERY sake listed.
 
-[
-  {
-    "name": "English name of the sake",
-    "nameJapanese": "Japanese name if visible",
-    "brewery": "Brewery name if listed",
-    "type": "Junmai, Ginjo, Daiginjo, Honjozo, Nigori, Sparkling, or Other",
-    "price": "$14" or "¥1200" — include the currency symbol exactly as shown,
-    "size": "Glass", "Carafe", "Bottle", "180ml", "300ml", "720ml", etc.,
-    "description": "Brief 1-sentence description of this sake's character",
-    "flavorProfile": ["Crisp", "Floral", "Smooth", "Fruity", "Dry", "Rich", "Umami", "Sweet"],
-    "servingTemperature": ["Chilled", "Room", "Warm"],
-    "alcoholPercentage": 15.5,
-    "polishingRatio": 50
-  }
-]
-
-Rules:
-- Extract ALL sakes on the menu, not just the first one
-- Keep prices exactly as shown on the menu
-- Include the serving size if listed (glass, carafe, bottle, ml amount)
-- If a sake appears at multiple sizes/prices, create a separate entry for each
-- For flavorProfile: pick 2-4 descriptors based on the sake type and any tasting notes
-- If you can identify the brewery, include it; otherwise omit
-- If you cannot determine a field, omit it
-- Return ONLY valid JSON, no markdown formatting`,
+Output must be compact and strictly factual from visible text:
+- Include all listed items
+- Keep each price exactly as shown (including symbols if present)
+- Include size labels if visible (Small, Large, One Size, glass, carafe, bottle, ml)
+- If one sake has multiple listed prices/sizes, output one item per size/price row
+- Do NOT invent missing fields
+- Keep descriptions short (max 10 words) and only when clearly inferable from type
+`,
               },
               {
                 type: 'image_url',
@@ -258,8 +518,48 @@ Rules:
             ],
           },
         ],
-        max_tokens: 3000,
-        temperature: 0.5,
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: 'menu_sake_items',
+            schema: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                sakes: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                      name: { type: 'string' },
+                      nameJapanese: { type: 'string' },
+                      brewery: { type: 'string' },
+                      type: { type: 'string' },
+                      price: { type: 'string' },
+                      size: { type: 'string' },
+                      description: { type: 'string' },
+                      flavorProfile: {
+                        type: 'array',
+                        items: { type: 'string' },
+                      },
+                      servingTemperature: {
+                        type: 'array',
+                        items: { type: 'string' },
+                      },
+                      alcoholPercentage: { type: 'number' },
+                      polishingRatio: { type: 'number' },
+                    },
+                    required: ['name'],
+                  },
+                },
+              },
+              required: ['sakes'],
+            },
+          },
+        },
+        max_tokens: 5000,
+        temperature: 0.2,
       }),
     });
 
@@ -279,21 +579,26 @@ Rules:
     }
 
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
+    const choice = data.choices?.[0];
+    const content = choice?.message?.content;
 
     if (!content) {
       return { success: false, error: 'No analysis result from OpenAI' };
     }
 
-    console.log('📝 Raw OpenAI menu response:', content);
+    if (choice?.finish_reason === 'length') {
+      return {
+        success: false,
+        error:
+          'This menu photo has too much text for one pass. Try scanning one menu section at a time.',
+      };
+    }
 
-    let sakes: MenuSakeItem[];
+    let rawItems: RawMenuSakeItem[] = [];
     try {
-      const jsonMatch =
-        content.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/) || content.match(/\[[\s\S]*\]/);
-      const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : content;
-      sakes = JSON.parse(jsonStr.trim());
-    } catch {
+      const parsed = JSON.parse(content.trim()) as unknown;
+      rawItems = findMenuItemsInUnknown(parsed);
+    } catch (error) {
       console.error('Failed to parse menu response:', content);
       return {
         success: false,
@@ -301,17 +606,22 @@ Rules:
       };
     }
 
-    if (!Array.isArray(sakes) || sakes.length === 0) {
+    const normalized = rawItems
+      .map((item) => normalizeMenuSakeItem(item))
+      .filter((item): item is MenuSakeItem => Boolean(item));
+    const sakes = dedupeMenuSakes(normalized);
+
+    if (sakes.length === 0) {
       return {
         success: false,
-        error: 'No sake items found on this menu. Try a clearer photo.',
+        error:
+          'No sake items found on this menu. Try better lighting or scan a smaller section of the menu.',
       };
     }
 
-    const valid = sakes.filter((s) => s.name);
-    console.log(`✅ Found ${valid.length} sake items on menu`);
+    console.log(`✅ Found ${sakes.length} sake items on menu`);
 
-    return { success: true, sakes: valid };
+    return { success: true, sakes };
   } catch (error: any) {
     console.error('Error scanning sake menu:', error);
     return {
