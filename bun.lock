@@ -160,6 +160,7 @@
   },
   "patchedDependencies": {
     "react-native@0.79.6": "patches/react-native@0.79.6.patch",
+    "@react-native-menu/menu@1.2.2": "patches/@react-native-menu+menu@1.2.2.patch",
   },
   "overrides": {
     "react-native-css-interop": "0.1.22",
