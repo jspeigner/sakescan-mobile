@@ -26,6 +26,7 @@ import {
   TrendingUp,
   Minus,
   BookOpen,
+  Sparkles,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -120,6 +121,12 @@ function SakeMenuCard({
 
   const priceLabelColor =
     priceCategory === 'low' ? '#2ECC71' : priceCategory === 'high' ? '#E74C3C' : '#C9A227';
+  const recommendationColor =
+    item.recommendationTier === 'Top Pick'
+      ? '#2ECC71'
+      : item.recommendationTier === 'Good Match'
+        ? '#C9A227'
+        : '#8B8B8B';
 
   return (
     <Animated.View
@@ -151,6 +158,27 @@ function SakeMenuCard({
           }}
         >
           <View style={{ flex: 1, marginRight: 12 }}>
+            {item.recommendationTier && (
+              <View
+                style={{
+                  alignSelf: 'flex-start',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                  paddingHorizontal: 8,
+                  paddingVertical: 4,
+                  borderRadius: 10,
+                  backgroundColor: `${recommendationColor}20`,
+                  marginBottom: 8,
+                }}
+              >
+                <Sparkles size={12} color={recommendationColor} />
+                <Text style={{ fontSize: 11, fontWeight: '700', color: recommendationColor }}>
+                  {item.recommendationTier}
+                  {item.recommendationScore != null ? ` • ${item.recommendationScore}` : ''}
+                </Text>
+              </View>
+            )}
             <Text
               style={{
                 fontFamily: 'NotoSerifJP_600SemiBold',
@@ -208,11 +236,12 @@ function SakeMenuCard({
                 >
                   {priceIcon}
                   <Text style={{ fontSize: 11, fontWeight: '600', color: priceLabelColor }}>
-                    {priceCategory === 'low'
-                      ? 'Great Value'
-                      : priceCategory === 'high'
-                        ? 'Premium'
-                        : 'Mid-Range'}
+                    {item.valueLabel ??
+                      (priceCategory === 'low'
+                        ? 'Great Value'
+                        : priceCategory === 'high'
+                          ? 'Premium'
+                          : 'Mid-Range')}
                   </Text>
                 </View>
               )}
@@ -302,6 +331,28 @@ function SakeMenuCard({
           </View>
         )}
 
+        {item.recommendationReasons && item.recommendationReasons.length > 0 && (
+          <View
+            style={{
+              paddingHorizontal: 20,
+              paddingBottom: 14,
+            }}
+          >
+            {item.recommendationReasons.slice(0, 2).map((reason, idx) => (
+              <Text
+                key={`${reason}-${idx}`}
+                style={{
+                  fontSize: 12,
+                  color: colors.textSecondary,
+                  lineHeight: 18,
+                }}
+              >
+                • {reason}
+              </Text>
+            ))}
+          </View>
+        )}
+
         {/* Description */}
         {item.description && (
           <View
@@ -356,6 +407,10 @@ export default function MenuResultsScreen() {
   }
 
   const priceValues = sakes.map((s) => parsePriceValue(s.price));
+  const rankedSakes = [...sakes].sort(
+    (a, b) => (b.recommendationScore ?? 0) - (a.recommendationScore ?? 0)
+  );
+  const topPicks = rankedSakes.filter((item) => item.recommendationTier === 'Top Pick').slice(0, 3);
 
   if (sakes.length === 0) {
     return (
@@ -559,13 +614,42 @@ export default function MenuResultsScreen() {
           </LinearGradient>
         </Animated.View>
 
+        {topPicks.length > 0 && (
+          <View
+            style={{
+              backgroundColor: colors.surface,
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: colors.borderLight,
+              padding: 14,
+              marginBottom: 16,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 14,
+                fontWeight: '700',
+                color: colors.text,
+                marginBottom: 6,
+              }}
+            >
+              Top picks for your taste and budget
+            </Text>
+            {topPicks.map((item, idx) => (
+              <Text key={`${item.name}-top-${idx}`} style={{ fontSize: 13, color: colors.textSecondary, lineHeight: 19 }}>
+                {idx + 1}. {item.name} {item.price ? `(${item.price})` : ''} {item.recommendationScore != null ? `- score ${item.recommendationScore}` : ''}
+              </Text>
+            ))}
+          </View>
+        )}
+
         {/* Sake cards */}
-        {sakes.map((item, index) => (
+        {rankedSakes.map((item, index) => (
           <SakeMenuCard
             key={`${item.name}-${index}`}
             item={item}
             index={index}
-            priceCategory={getPriceCategory(priceValues[index], priceValues)}
+            priceCategory={getPriceCategory(parsePriceValue(item.price), priceValues)}
             colors={colors}
           />
         ))}

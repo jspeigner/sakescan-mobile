@@ -37,6 +37,10 @@ export interface MenuSakeItem {
   servingTemperature?: string[];
   alcoholPercentage?: number;
   polishingRatio?: number;
+  recommendationScore?: number;
+  recommendationTier?: 'Top Pick' | 'Good Match' | 'Try If Curious';
+  recommendationReasons?: string[];
+  valueLabel?: 'Great Value' | 'Fair Price' | 'Premium Price';
 }
 
 export interface MenuScanResult {
@@ -136,6 +140,120 @@ function dedupeMenuSakes(items: MenuSakeItem[]): MenuSakeItem[] {
     deduped.push(item);
   }
   return deduped;
+}
+
+export interface MenuPreferences {
+  preferredFlavors?: string[];
+  budgetBias?: 'value' | 'balanced' | 'premium';
+}
+
+function parsePriceValue(price?: string): number | null {
+  if (!price) return null;
+  const match = price.match(/[\d,.]+/);
+  if (!match) return null;
+  const value = Number.parseFloat(match[0].replace(/,/g, ''));
+  return Number.isFinite(value) ? value : null;
+}
+
+function getMedian(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) {
+    return (sorted[middle - 1] + sorted[middle]) / 2;
+  }
+  return sorted[middle];
+}
+
+function mapTypeToFlavorHints(type?: string): string[] {
+  const normalized = type?.toLowerCase() ?? '';
+  if (normalized.includes('daiginjo') || normalized.includes('ginjo')) {
+    return ['Floral', 'Fruity', 'Crisp'];
+  }
+  if (normalized.includes('junmai')) {
+    return ['Umami', 'Rich', 'Dry'];
+  }
+  if (normalized.includes('nigori')) {
+    return ['Sweet', 'Rich', 'Smooth'];
+  }
+  if (normalized.includes('sparkling')) {
+    return ['Crisp', 'Fruity', 'Sweet'];
+  }
+  if (normalized.includes('honjozo')) {
+    return ['Dry', 'Smooth', 'Crisp'];
+  }
+  return ['Crisp', 'Smooth'];
+}
+
+function scoreMenuRecommendations(
+  items: MenuSakeItem[],
+  preferences?: MenuPreferences
+): MenuSakeItem[] {
+  const preferredFlavors = preferences?.preferredFlavors?.length
+    ? preferences.preferredFlavors
+    : ['Crisp', 'Dry', 'Umami'];
+  const budgetBias = preferences?.budgetBias ?? 'balanced';
+
+  const parsedPrices = items.map((item) => parsePriceValue(item.price));
+  const validPrices = parsedPrices.filter((value): value is number => value !== null);
+  const medianPrice = validPrices.length > 0 ? getMedian(validPrices) : null;
+
+  return items.map((item, index) => {
+    const itemFlavors = item.flavorProfile?.length ? item.flavorProfile : mapTypeToFlavorHints(item.type);
+    const matches = itemFlavors.filter((flavor) => preferredFlavors.includes(flavor)).length;
+    const tasteMatch = Math.min(100, Math.round((matches / Math.max(1, preferredFlavors.length)) * 100));
+
+    const price = parsedPrices[index];
+    let valueScore = 55;
+    let valueLabel: 'Great Value' | 'Fair Price' | 'Premium Price' = 'Fair Price';
+    if (price !== null && medianPrice !== null) {
+      if (price <= medianPrice * 0.85) {
+        valueScore = budgetBias === 'premium' ? 68 : 95;
+        valueLabel = 'Great Value';
+      } else if (price >= medianPrice * 1.2) {
+        valueScore = budgetBias === 'premium' ? 82 : 42;
+        valueLabel = 'Premium Price';
+      } else {
+        valueScore = 74;
+      }
+    }
+
+    let confidence = 50;
+    if (item.type) confidence += 12;
+    if (item.price) confidence += 12;
+    if (item.flavorProfile?.length) confidence += 14;
+    if (item.description) confidence += 8;
+    if (item.servingTemperature?.length) confidence += 4;
+    confidence = Math.min(100, confidence);
+
+    const recommendationScore = Math.round(0.55 * tasteMatch + 0.3 * valueScore + 0.15 * confidence);
+    const recommendationTier =
+      recommendationScore >= 78 ? 'Top Pick' : recommendationScore >= 62 ? 'Good Match' : 'Try If Curious';
+
+    const recommendationReasons: string[] = [];
+    if (matches > 0) {
+      recommendationReasons.push(`Matches ${matches} taste profile preference${matches > 1 ? 's' : ''}`);
+    } else {
+      recommendationReasons.push('Flavor profile is less aligned with your saved preferences');
+    }
+    recommendationReasons.push(
+      valueLabel === 'Great Value'
+        ? 'Priced below menu median'
+        : valueLabel === 'Premium Price'
+          ? 'Priced above menu median'
+          : 'Priced around menu median'
+    );
+    if (!item.flavorProfile?.length) {
+      recommendationReasons.push('Taste guidance inferred from sake type');
+    }
+
+    return {
+      ...item,
+      recommendationScore,
+      recommendationTier,
+      recommendationReasons: recommendationReasons.slice(0, 3),
+      valueLabel,
+    };
+  });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -469,7 +587,10 @@ Extract label information from visible text only:
   }
 }
 
-export async function scanSakeMenu(imageBase64: string): Promise<MenuScanResult> {
+export async function scanSakeMenu(
+  imageBase64: string,
+  preferences?: MenuPreferences
+): Promise<MenuScanResult> {
   try {
     const apiKey =
       process.env.EXPO_PUBLIC_OPENAI_API_KEY?.trim() ||
@@ -598,7 +719,7 @@ Output must be compact and strictly factual from visible text:
     try {
       const parsed = JSON.parse(content.trim()) as unknown;
       rawItems = findMenuItemsInUnknown(parsed);
-    } catch (error) {
+    } catch {
       console.error('Failed to parse menu response:', content);
       return {
         success: false,
@@ -609,7 +730,7 @@ Output must be compact and strictly factual from visible text:
     const normalized = rawItems
       .map((item) => normalizeMenuSakeItem(item))
       .filter((item): item is MenuSakeItem => Boolean(item));
-    const sakes = dedupeMenuSakes(normalized);
+    const sakes = scoreMenuRecommendations(dedupeMenuSakes(normalized), preferences);
 
     if (sakes.length === 0) {
       return {

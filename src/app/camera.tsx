@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Text, View, Pressable, StyleSheet, Platform, Image } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
@@ -18,9 +18,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
-import { scanSakeLabel, scanSakeMenu } from '@/lib/openai-scan';
+import { scanSakeLabel, scanSakeMenu, type MenuPreferences } from '@/lib/openai-scan';
 import { useAuth } from '@/lib/auth-context';
 import { useGuestUsageStore } from '@/lib/guest-usage-store';
+import { useUserFavorites, useUserRatings } from '@/lib/supabase-hooks';
 
 type ScanMode = 'label' | 'menu';
 
@@ -50,6 +51,82 @@ function getScanStage(progress: number, mode: ScanMode): string {
   return stages[0].label;
 }
 
+function mapTypeToFlavorHints(type?: string | null): string[] {
+  const normalized = type?.toLowerCase() ?? '';
+  if (normalized.includes('daiginjo') || normalized.includes('ginjo')) {
+    return ['Floral', 'Fruity', 'Crisp'];
+  }
+  if (normalized.includes('junmai')) {
+    return ['Umami', 'Rich', 'Dry'];
+  }
+  if (normalized.includes('nigori')) {
+    return ['Sweet', 'Rich', 'Smooth'];
+  }
+  if (normalized.includes('sparkling')) {
+    return ['Crisp', 'Fruity', 'Sweet'];
+  }
+  if (normalized.includes('honjozo') || normalized.includes('futsushu')) {
+    return ['Dry', 'Smooth', 'Crisp'];
+  }
+  return ['Crisp', 'Smooth'];
+}
+
+function inferMenuPreferences(
+  ratings: { rating: number; sake?: { type?: string | null } | null }[] | undefined,
+  favorites: { sake?: { type?: string | null } | null }[] | undefined
+): MenuPreferences | undefined {
+  const flavorCounts = new Map<string, number>();
+  let premiumVotes = 0;
+  let valueVotes = 0;
+
+  for (const rating of ratings ?? []) {
+    const type = rating.sake?.type;
+    if (!type || rating.rating < 4) continue;
+
+    const weight = rating.rating >= 4.5 ? 2 : 1;
+    for (const flavor of mapTypeToFlavorHints(type)) {
+      flavorCounts.set(flavor, (flavorCounts.get(flavor) ?? 0) + weight);
+    }
+
+    const lowered = type.toLowerCase();
+    if (lowered.includes('daiginjo') || lowered.includes('ginjo')) premiumVotes += weight;
+    if (lowered.includes('junmai') || lowered.includes('honjozo') || lowered.includes('futsushu')) {
+      valueVotes += weight;
+    }
+  }
+
+  for (const favorite of favorites ?? []) {
+    const type = favorite.sake?.type;
+    if (!type) continue;
+    for (const flavor of mapTypeToFlavorHints(type)) {
+      flavorCounts.set(flavor, (flavorCounts.get(flavor) ?? 0) + 1);
+    }
+
+    const lowered = type.toLowerCase();
+    if (lowered.includes('daiginjo') || lowered.includes('ginjo')) premiumVotes += 1;
+    if (lowered.includes('junmai') || lowered.includes('honjozo') || lowered.includes('futsushu')) {
+      valueVotes += 1;
+    }
+  }
+
+  const preferredFlavors = [...flavorCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4)
+    .map(([flavor]) => flavor);
+
+  if (preferredFlavors.length === 0 && premiumVotes === 0 && valueVotes === 0) {
+    return undefined;
+  }
+
+  const budgetBias: MenuPreferences['budgetBias'] =
+    premiumVotes - valueVotes >= 2 ? 'premium' : valueVotes - premiumVotes >= 2 ? 'value' : 'balanced';
+
+  return {
+    preferredFlavors,
+    budgetBias,
+  };
+}
+
 export default function CameraScreen() {
   const insets = useSafeAreaInsets();
   const [facing] = useState<CameraType>('back');
@@ -63,6 +140,13 @@ export default function CameraScreen() {
   const cameraRef = useRef<CameraView>(null);
   const { isGuest, session } = useAuth();
   const incrementLabelScan = useGuestUsageStore((s) => s.incrementLabelScan);
+  const userId = session?.user?.id;
+  const { data: userRatings } = useUserRatings(userId);
+  const { data: userFavorites } = useUserFavorites(userId);
+  const menuPreferences = useMemo(
+    () => inferMenuPreferences(userRatings, userFavorites),
+    [userFavorites, userRatings]
+  );
 
   // Reanimated values
   const scanLineY = useSharedValue(0);          // sweeping scan line position (0-1)
@@ -184,7 +268,7 @@ export default function CameraScreen() {
     try {
       if (scanMode === 'menu') {
         console.log('📋 Starting sake menu scan with OpenAI...');
-        const result = await scanSakeMenu(base64Image);
+        const result = await scanSakeMenu(base64Image, menuPreferences);
 
         if (result.success && result.sakes && result.sakes.length > 0) {
           console.log(`✅ Found ${result.sakes.length} sakes on menu`);
