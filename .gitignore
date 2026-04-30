@@ -37,9 +37,20 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
-# generated native folders
-/ios
-/android
+# Native apps (ios/ + android/ tracked; exclude vendored + build output)
+ios/Pods/
+ios/build/
+ios/build 2/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcuserstate
+
+android/app/build/
+android/build/
+android/.gradle/
+android/.cxx/
+android/local.properties
+*.iml
 
 # Expo log
 expo.log
