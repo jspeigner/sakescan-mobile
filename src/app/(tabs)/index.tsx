@@ -123,9 +123,22 @@ export default function HomeScreen() {
       >
         {/* Header */}
         <Animated.View style={[{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16 }, headerStyle]}>
-          <Text style={{ fontFamily: 'NotoSerifJP_600SemiBold', fontSize: 28, fontWeight: '600', color: colors.text }}>
-            SakeScan
-          </Text>
+          <View style={{ flex: 1, marginRight: 12, minWidth: 0 }}>
+            <Text
+              style={{
+                fontFamily: 'NotoSerifJP_600SemiBold',
+                fontSize: 28,
+                fontWeight: '600',
+                color: colors.text,
+              }}
+              adjustsFontSizeToFit
+              minimumFontScale={0.82}
+              maxFontSizeMultiplier={1.35}
+              numberOfLines={1}
+            >
+              SakeScan
+            </Text>
+          </View>
           <Pressable onPress={() => router.push('/profile')}>
             <View
               style={{

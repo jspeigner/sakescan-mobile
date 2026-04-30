@@ -126,9 +126,24 @@ export default function ExploreScreen() {
         >
           <User size={20} color="#1a1a1a" />
         </Pressable>
-        <Text style={{ fontFamily: 'NotoSerifJP_600SemiBold', fontSize: 20, fontWeight: '600', color: '#1a1a1a' }}>
-          SakeScan
-        </Text>
+        <View style={{ flex: 1, alignItems: 'center', paddingHorizontal: 8, minWidth: 0 }}>
+          <Text
+            style={{
+              fontFamily: 'NotoSerifJP_600SemiBold',
+              fontSize: 20,
+              fontWeight: '600',
+              color: '#1a1a1a',
+              textAlign: 'center',
+              width: '100%',
+            }}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
+            maxFontSizeMultiplier={1.35}
+            numberOfLines={1}
+          >
+            SakeScan
+          </Text>
+        </View>
         <Pressable className="w-10 h-10 rounded-full bg-[#F0EDE5] items-center justify-center">
           <Bell size={20} color="#1a1a1a" />
         </Pressable>

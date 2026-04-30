@@ -98,12 +98,17 @@ export default function PaywallScreen() {
 
           <Text
             style={{
+              width: '100%',
               fontFamily: 'NotoSerifJP_700Bold',
               fontSize: 30,
               color: colors.text,
               textAlign: 'center',
               marginBottom: 8,
             }}
+            adjustsFontSizeToFit
+            minimumFontScale={0.78}
+            maxFontSizeMultiplier={1.35}
+            numberOfLines={2}
           >
             Unlock SakeScan
           </Text>
@@ -145,9 +150,17 @@ export default function PaywallScreen() {
                 >
                   <Icon size={22} color={colors.primary} />
                 </View>
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>
+                    <Text
+                      style={{
+                        flexShrink: 1,
+                        fontSize: 16,
+                        fontWeight: '700',
+                        color: colors.text,
+                      }}
+                      numberOfLines={2}
+                    >
                       {f.label}
                     </Text>
                     <Check size={14} color={colors.primary} strokeWidth={3} />

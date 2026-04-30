@@ -1,4 +1,4 @@
-import { Text, View, Pressable, Platform, Alert } from 'react-native';
+import { Text, View, Pressable, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -193,16 +193,31 @@ export default function WelcomeScreen() {
         {/* Logo Icon */}
         <SakeIcon />
 
-        {/* Title */}
-        <Text
-          className="mt-8 text-[#1a1a1a]"
-          style={{ fontFamily: 'NotoSerifJP_600SemiBold', fontSize: 36, fontWeight: '600' }}
-        >
-          SakeScan
-        </Text>
+        {/* Title — bounded width so serif glyphs aren't clipped on narrow screens */}
+        <View className="mt-8 w-full items-center px-1">
+          <Text
+            className="text-[#1a1a1a]"
+            style={{
+              width: '100%',
+              fontFamily: 'NotoSerifJP_600SemiBold',
+              fontSize: 36,
+              fontWeight: '600',
+              textAlign: 'center',
+            }}
+            adjustsFontSizeToFit
+            minimumFontScale={0.75}
+            maxFontSizeMultiplier={1.35}
+            numberOfLines={1}
+          >
+            SakeScan
+          </Text>
+        </View>
 
         {/* Tagline */}
-        <Text className="text-[#6B6B6B] text-lg mt-3">
+        <Text
+          className="text-[#6B6B6B] text-lg mt-3 w-full px-1 text-center"
+          style={{ flexShrink: 1 }}
+        >
           Discover sake, one label at a time
         </Text>
       </View>

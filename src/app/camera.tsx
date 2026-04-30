@@ -463,7 +463,13 @@ export default function CameraScreen() {
           <Pressable onPress={handleClose} style={styles.headerButton}>
             <ChevronLeft size={24} color="#FFFFFF" />
           </Pressable>
-          <Text style={styles.headerTitle}>
+          <Text
+            style={styles.headerTitle}
+            numberOfLines={2}
+            adjustsFontSizeToFit
+            minimumFontScale={0.82}
+            maxFontSizeMultiplier={1.35}
+          >
             {isScanning
               ? 'Scanning...'
               : scanMode === 'menu'
@@ -666,9 +672,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerTitle: {
+    flex: 1,
+    minWidth: 0,
     color: '#FFFFFF',
     fontSize: 17,
     fontWeight: '600',
+    textAlign: 'center',
+    paddingHorizontal: 4,
   },
   modeToggleRow: {
     flexDirection: 'row',

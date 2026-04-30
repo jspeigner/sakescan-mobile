@@ -254,9 +254,22 @@ export default function ProfileScreen() {
               <ChevronRight size={28} color={colors.text} />
             </View>
           </Pressable>
-          <Text style={{ fontFamily: 'NotoSerifJP_600SemiBold', fontSize: 28, fontWeight: '600', color: colors.text }}>
-            {t('profile.title')}
-          </Text>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text
+              style={{
+                fontFamily: 'NotoSerifJP_600SemiBold',
+                fontSize: 28,
+                fontWeight: '600',
+                color: colors.text,
+              }}
+              adjustsFontSizeToFit
+              minimumFontScale={0.82}
+              maxFontSizeMultiplier={1.35}
+              numberOfLines={1}
+            >
+              {t('profile.title')}
+            </Text>
+          </View>
         </View>
 
         {/* Profile Card */}
