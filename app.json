@@ -10,7 +10,6 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.sakescan",
-      "buildNumber": "48",
       "infoPlist": {
         "NSCameraUsageDescription": "SakeScan uses the camera to capture photos inside the app before you publish them.",
         "NSMicrophoneUsageDescription": "SakeScan uses the microphone to record audio clips that stay with your in-app creations.",
@@ -22,7 +21,6 @@
     "android": {
       "edgeToEdgeEnabled": true,
       "package": "com.sakescan",
-      "versionCode": 7,
       "adaptiveIcon": {
         "foregroundImage": "./icon.png",
         "backgroundColor": "#FAFAF8"
