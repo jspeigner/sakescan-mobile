@@ -9,35 +9,43 @@ dist/
 web-build/
 expo-env.d.ts
 
-# Native
+# Metro
+.metro-health-check*
+
+# Native (RN / Xcode / Android)
 .kotlin/
 *.orig.*
 *.jks
+*.keystore
 *.p8
 *.p12
 *.key
 *.mobileprovision
 
-# Metro
-.metro-health-check*
-
-# debug
+# debug / package managers
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+pnpm-debug.log*
+bun-debug.log*
 
-# macOS
+# OS junk
 .DS_Store
+Thumbs.db
+Desktop.ini
 *.pem
 
-# local env files
+# Secrets & local env (copy from README / teammate; never commit real keys)
 .env
 .env*.local
 
 # typescript
 *.tsbuildinfo
 
-# Native apps (ios/ + android/ tracked; exclude vendored + build output)
+# Supabase CLI — local cache (each machine regenerates via `supabase link`)
+supabase/.temp/
+
+# iOS (project is tracked; Pods & builds are not — run `pod install` after clone)
 ios/Pods/
 ios/build/
 ios/build 2/
@@ -45,12 +53,26 @@ ios/build 2/
 *.xcworkspace/xcuserdata/
 *.xcuserstate
 
+# Android (when present — run Gradle sync / build locally)
 android/app/build/
 android/build/
 android/.gradle/
 android/.cxx/
 android/local.properties
+android/.idea/
 *.iml
 
-# Expo log
+# Ruby / CocoaPods optional vendoring (some teams use `bundle config set path vendor/bundle`)
+vendor/bundle/
+
+# Tests / tooling (harmless if unused)
+coverage/
+*.log
+
+# Large accidental artifact drops in repo root
+*.ipa
+*.apk
+*.aab
+
+# Expo log (legacy single-file name)
 expo.log
