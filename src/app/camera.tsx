@@ -322,6 +322,7 @@ export default function CameraScreen() {
             params: {
               sakeData: JSON.stringify(result.sake),
               imageUri: imageUri || '',
+              ...(result.sakeId ? { sakeId: result.sakeId } : {}),
             },
           });
         } else {

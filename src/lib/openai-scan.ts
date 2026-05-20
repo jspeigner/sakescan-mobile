@@ -22,6 +22,8 @@ export interface SakeInfo {
 export interface ScanResult {
   success: boolean;
   sake?: SakeInfo;
+  /** Set when the scan matched an existing row in `public.sake`. */
+  sakeId?: string;
   error?: string;
 }
 

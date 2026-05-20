@@ -1,24 +1,45 @@
-import { View } from 'react-native';
+import { View, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import ScanResultScreen from '@/components/ScanResultScreen';
+import { useSake } from '@/lib/supabase-hooks';
+import { catalogSakeToScanInfo } from '@/lib/sake-catalog';
 
 export default function ScanResult() {
   const params = useLocalSearchParams<{
-    sakeData: string;
+    sakeData?: string;
     imageUri?: string;
+    sakeId?: string;
   }>();
 
-  // Parse the sake data from URL params — guard against malformed JSON
-  let sakeInfo = null;
+  const catalogSakeId = params.sakeId?.trim() || undefined;
+  const { data: catalogSake, isLoading: isCatalogLoading } = useSake(catalogSakeId);
+
+  let scanFallback = null;
   try {
-    sakeInfo = params.sakeData ? JSON.parse(params.sakeData) : null;
+    scanFallback = params.sakeData ? JSON.parse(params.sakeData) : null;
   } catch {
-    sakeInfo = null;
+    scanFallback = null;
   }
+
+  if (catalogSakeId && isCatalogLoading) {
+    return (
+      <View className="flex-1 bg-[#FAFAF8] items-center justify-center">
+        <ActivityIndicator size="large" color="#BC002D" />
+      </View>
+    );
+  }
+
+  const sakeInfo = catalogSake ? catalogSakeToScanInfo(catalogSake) : scanFallback;
 
   if (!sakeInfo) {
     return <View className="flex-1 bg-white" />;
   }
 
-  return <ScanResultScreen sakeInfo={sakeInfo} imageUri={params.imageUri} />;
+  return (
+    <ScanResultScreen
+      sakeInfo={sakeInfo}
+      imageUri={params.imageUri}
+      catalogSakeId={catalogSake?.id ?? catalogSakeId}
+    />
+  );
 }

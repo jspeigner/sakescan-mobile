@@ -34,6 +34,8 @@ import { getCurrentUser } from '@/lib/supabase';
 const { width } = Dimensions.get('window');
 
 interface ScanResultScreenProps {
+  /** When set, scan history uses this catalog id instead of creating a duplicate sake row. */
+  catalogSakeId?: string;
   sakeInfo: {
     name: string;
     nameJapanese?: string;
@@ -57,7 +59,11 @@ interface ScanResultScreenProps {
   imageUri?: string;
 }
 
-export default function ScanResultScreen({ sakeInfo, imageUri }: ScanResultScreenProps) {
+export default function ScanResultScreen({
+  sakeInfo,
+  imageUri,
+  catalogSakeId,
+}: ScanResultScreenProps) {
   const insets = useSafeAreaInsets();
   const [isSaving, setIsSaving] = useState(false);
   const addScan = useScanHistoryStore((s) => s.addScan);
@@ -107,45 +113,51 @@ export default function ScanResultScreen({ sakeInfo, imageUri }: ScanResultScree
           return;
         }
 
-        console.log('💾 Saving sake to Supabase:', sakeInfo.name);
+        let sakeId = catalogSakeId;
 
-        // Create or get existing sake
-        const sakeResult = await createSake.mutateAsync({
-          name: sakeInfo.name,
-          nameJapanese: sakeInfo.nameJapanese,
-          brewery: sakeInfo.brewery,
-          type: sakeInfo.type,
-          subtype: sakeInfo.subtype,
-          prefecture: sakeInfo.prefecture,
-          region: sakeInfo.region,
-          description: sakeInfo.description,
-          riceVariety: sakeInfo.riceVariety,
-          polishingRatio: sakeInfo.polishingRatio,
-          alcoholPercentage: sakeInfo.alcoholPercentage,
-          // Pass all OpenAI extracted data
-          tastingNotes: sakeInfo.tastingNotes,
-          foodPairings: sakeInfo.foodPairings,
-          flavorProfile: sakeInfo.flavorProfile,
-          servingTemperature: sakeInfo.servingTemperature,
-          // Upload the captured label photo
-          imageUrl: imageUri,
-        });
+        if (!sakeId) {
+          console.log('💾 Saving sake to Supabase:', sakeInfo.name);
+          const sakeResult = await createSake.mutateAsync({
+            name: sakeInfo.name,
+            nameJapanese: sakeInfo.nameJapanese,
+            brewery: sakeInfo.brewery,
+            type: sakeInfo.type,
+            subtype: sakeInfo.subtype,
+            prefecture: sakeInfo.prefecture,
+            region: sakeInfo.region,
+            description: sakeInfo.description,
+            riceVariety: sakeInfo.riceVariety,
+            polishingRatio: sakeInfo.polishingRatio,
+            alcoholPercentage: sakeInfo.alcoholPercentage,
+            tastingNotes: sakeInfo.tastingNotes,
+            foodPairings: sakeInfo.foodPairings,
+            flavorProfile: sakeInfo.flavorProfile,
+            servingTemperature: sakeInfo.servingTemperature,
+            imageUrl: imageUri,
+          });
+          sakeId = sakeResult.id;
+          if (sakeResult.isNew) {
+            console.log('🎉 New sake added to global database!');
+          }
+        } else {
+          console.log('📚 Using catalog sake id:', sakeId);
+        }
 
-        console.log('✅ Sake saved to Supabase with ID:', sakeResult.id);
+        if (!sakeId) {
+          setIsSaving(false);
+          return;
+        }
 
-        // Create scan record - stores complete OpenAI JSON in ocr_raw_text for full data preservation
+        console.log('✅ Sake saved to Supabase with ID:', sakeId);
+
         await createScan.mutateAsync({
           userId: user.id,
-          sakeId: sakeResult.id,
+          sakeId,
           imageUrl: imageUri,
-          ocrRawText: JSON.stringify(sakeInfo), // Full OpenAI response preserved here
+          ocrRawText: JSON.stringify(sakeInfo),
         });
 
         console.log('✅ Scan record saved to Supabase');
-
-        if (sakeResult.isNew) {
-          console.log('🎉 New sake added to global database!');
-        }
 
       } catch (error) {
         console.error('Failed to save scan:', error);

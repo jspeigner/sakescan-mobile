@@ -377,13 +377,19 @@ export function useCreateSake() {
       // Label photo captured during scan
       imageUrl?: string;
     }) => {
-      // Check if sake already exists by name + brewery
-      const { data: existing } = await supabase
+      // Check if sake already exists (fuzzy — catalog names often differ slightly from scan text)
+      const { data: existingRows } = await supabase
         .from('sake')
-        .select('id, image_url')
-        .eq('name', params.name)
-        .eq('brewery', params.brewery)
-        .maybeSingle();
+        .select('id, image_url, name, brewery')
+        .or(`name.ilike.%${params.name}%,brewery.ilike.%${params.brewery}%`)
+        .limit(8);
+
+      const existing =
+        existingRows?.find(
+          (row) =>
+            row.name?.toLowerCase().includes(params.name.toLowerCase()) ||
+            params.name.toLowerCase().includes(row.name?.toLowerCase() ?? ''),
+        ) ?? existingRows?.[0];
 
       if (existing) {
         console.log('Sake already exists, returning existing ID:', existing.id);

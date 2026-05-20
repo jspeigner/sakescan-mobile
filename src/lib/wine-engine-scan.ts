@@ -30,6 +30,27 @@ interface ScanLabelV2Response {
   error?: string;
 }
 
+function toUserFacingScanError(raw: string | undefined): string {
+  if (!raw?.trim()) {
+    return 'Could not identify this sake label. Try a clearer photo of the front label.';
+  }
+  const lower = raw.toLowerCase();
+  if (
+    lower.includes('invalid_api_key') ||
+    lower.includes('incorrect api key') ||
+    lower.includes('openai 401') ||
+    lower.includes('openai 403') ||
+    lower.includes('sk-') ||
+    raw.includes('{')
+  ) {
+    return 'Label scan is temporarily unavailable. Please try again in a few minutes.';
+  }
+  if (raw.length > 160) {
+    return 'Could not identify this sake label. Try a clearer photo of the front label.';
+  }
+  return raw;
+}
+
 function normalizeSake(partial: PartialSake, confidence?: 'high' | 'medium' | 'low'): SakeInfo {
   return {
     name: partial.name?.trim() || 'Unknown sake',
@@ -85,7 +106,7 @@ export async function scanSakeLabelV2(imageBase64: string): Promise<ScanResult> 
     if (!payload || !payload.success || !payload.sake) {
       return {
         success: false,
-        error: payload?.error ?? 'Could not identify sake label',
+        error: toUserFacingScanError(payload?.error),
       };
     }
 
@@ -105,6 +126,7 @@ export async function scanSakeLabelV2(imageBase64: string): Promise<ScanResult> 
     return {
       success: true,
       sake: normalizeSake(payload.sake, payload.confidence),
+      sakeId: payload.matched_sake_id ?? undefined,
     };
   } catch (err) {
     console.error('scan-label-v2 unexpected error:', err);

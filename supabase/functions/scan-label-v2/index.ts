@@ -95,6 +95,35 @@ function trimNonEmpty(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+/** User-safe scan error; never expose API keys or raw provider JSON. */
+function toPublicScanError(raw: string | null | undefined): string {
+  if (!raw?.trim()) {
+    return 'Could not identify this sake label. Try a clearer photo of the front label.';
+  }
+  const lower = raw.toLowerCase();
+  if (
+    lower.includes('invalid_api_key') ||
+    lower.includes('incorrect api key') ||
+    lower.includes('openai 401') ||
+    lower.includes('openai 403')
+  ) {
+    return 'Label scan is temporarily unavailable. Please try again in a few minutes.';
+  }
+  if (lower.includes('insufficient_quota') || lower.includes('billing')) {
+    return 'Label scan is temporarily unavailable due to service limits. Please try again later.';
+  }
+  if (lower.includes('rate limit') || lower.includes('429')) {
+    return 'Too many scans right now. Please wait a moment and try again.';
+  }
+  if (lower.includes('wineengine credentials not configured')) {
+    return 'Could not identify this sake label. Try a clearer photo of the front label.';
+  }
+  if (raw.length > 160 || raw.includes('{') || raw.includes('sk-')) {
+    return 'Could not identify this sake label. Try a clearer photo of the front label.';
+  }
+  return raw;
+}
+
 function callWineEngine(imageBase64: string): Promise<{
   ok: boolean;
   status: number;
@@ -271,9 +300,11 @@ Be factual. Do not invent values.`,
     .then(async (res) => {
       const latencyMs = Date.now() - started;
       if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        console.error(`OpenAI Vision failed: ${res.status}`, body.slice(0, 500));
         return {
           ok: false,
-          errorText: `OpenAI ${res.status}: ${await res.text().catch(() => '')}`,
+          errorText: `OpenAI ${res.status}: ${body}`,
           latencyMs,
         };
       }
@@ -329,9 +360,126 @@ Be factual. Do not invent values.`,
     }));
 }
 
-async function lookupSakeInDb(
+function parseRichDescriptionFields(description: string | null): {
+  mainDescription: string;
+  tastingNotes?: string;
+  foodPairings?: string[];
+  flavorProfile?: string[];
+  servingTemperature?: string[];
+} {
+  const raw = description?.trim() ?? '';
+  if (!raw) return { mainDescription: '' };
+
+  const descParts = raw.split(/\n\n\*\*/);
+  const mainDescription = descParts[0]?.trim() ?? '';
+  const extractField = (label: string): string | null => {
+    const part = descParts.find((p) => p.startsWith(`${label}:**`));
+    return part ? part.replace(`${label}:** `, '').trim() : null;
+  };
+  const foodPairingsRaw = extractField('Food Pairings');
+  const flavorProfileRaw = extractField('Flavor Profile');
+  const servingTempsRaw = extractField('Serving Temperature');
+
+  return {
+    mainDescription,
+    tastingNotes: extractField('Tasting Notes') ?? undefined,
+    foodPairings: foodPairingsRaw ? foodPairingsRaw.split(', ').filter(Boolean) : undefined,
+    flavorProfile: flavorProfileRaw ? flavorProfileRaw.split(', ').filter(Boolean) : undefined,
+    servingTemperature: servingTempsRaw ? servingTempsRaw.split(', ').filter(Boolean) : undefined,
+  };
+}
+
+function dbRowToSakeInfo(row: Record<string, unknown>): SakeInfo {
+  const rich = parseRichDescriptionFields(
+    typeof row.description === 'string' ? row.description : null,
+  );
+  const description =
+    rich.mainDescription.length > 0
+      ? rich.mainDescription
+      : (typeof row.description === 'string' ? row.description.trim() : '');
+
+  return {
+    name: String(row.name ?? ''),
+    nameJapanese: trimNonEmpty(row.name_japanese),
+    brewery: String(row.brewery ?? ''),
+    type: trimNonEmpty(row.type) ?? 'Sake',
+    subtype: trimNonEmpty(row.subtype),
+    prefecture: trimNonEmpty(row.prefecture),
+    region: trimNonEmpty(row.region),
+    description,
+    tastingNotes: rich.tastingNotes,
+    foodPairings: rich.foodPairings,
+    riceVariety: trimNonEmpty(row.rice_variety),
+    polishingRatio:
+      typeof row.polishing_ratio === 'number' && Number.isFinite(row.polishing_ratio)
+        ? row.polishing_ratio
+        : undefined,
+    alcoholPercentage:
+      typeof row.alcohol_percentage === 'number' && Number.isFinite(row.alcohol_percentage)
+        ? row.alcohol_percentage
+        : undefined,
+    flavorProfile: rich.flavorProfile,
+    servingTemperature: rich.servingTemperature,
+    scanQualityHint: 'high',
+  };
+}
+
+function catalogSearchToken(name: string | undefined): string | null {
+  if (!name?.trim()) return null;
+  const cleaned = name.trim().replace(/[^\w\s\u3040-\u30ff\u3400-\u9fff]/g, ' ');
+  const parts = cleaned.split(/\s+/).filter((p) => p.length >= 2);
+  if (parts.length === 0) return null;
+  return parts[0];
+}
+
+function scoreCatalogRow(
+  row: Record<string, unknown>,
+  guessName: string,
+  guessNameJp?: string,
+): number {
+  const name = String(row.name ?? '').toLowerCase();
+  const nameJp = String(row.name_japanese ?? '').toLowerCase();
+  const g = guessName.toLowerCase();
+  const gJp = guessNameJp?.toLowerCase() ?? '';
+  let score = 0;
+
+  if (name === g || (gJp && nameJp === gJp)) score += 120;
+  if (name.includes(g) || g.includes(name)) score += 60;
+  if (gJp && (nameJp.includes(gJp) || name.includes(gJp))) score += 40;
+
+  const nums = (s: string) => s.match(/\d+/g) ?? [];
+  const gNums = nums(g);
+  const nNums = nums(name);
+  if (gNums.length > 0 && gNums.some((n) => nNums.includes(n))) score += 35;
+
+  const ratings = typeof row.total_ratings === 'number' ? row.total_ratings : 0;
+  score += Math.min(ratings, 20);
+
+  return score;
+}
+
+function pickBestCatalogRow(
+  rows: Record<string, unknown>[],
+  guessName: string,
+  guessNameJp?: string,
+): { id: string; row: Record<string, unknown> } | null {
+  if (rows.length === 0) return null;
+  let best = rows[0];
+  let bestScore = scoreCatalogRow(best, guessName, guessNameJp);
+  for (let i = 1; i < rows.length; i++) {
+    const s = scoreCatalogRow(rows[i], guessName, guessNameJp);
+    if (s > bestScore) {
+      bestScore = s;
+      best = rows[i];
+    }
+  }
+  return { id: String(best.id ?? ''), row: best };
+}
+
+async function querySakeByGuess(
   supabase: ReturnType<typeof createClient>,
   guess: SakeInfo,
+  options: { filterBrewery: boolean },
 ): Promise<{ id: string; row: Record<string, unknown> } | null> {
   const name = guess.name?.trim();
   const nameJp = guess.nameJapanese?.trim();
@@ -342,24 +490,71 @@ async function lookupSakeInDb(
   const filters: string[] = [];
   if (name) filters.push(`name.ilike.%${name}%`);
   if (nameJp) filters.push(`name_japanese.ilike.%${nameJp}%`);
-  if (filters.length === 0) return null;
 
-  let query = supabase
-    .from('sake')
-    .select('*')
-    .or(filters.join(','))
-    .limit(1);
+  let query = supabase.from('sake').select('*').or(filters.join(',')).limit(5);
 
-  if (brewery) query = query.ilike('brewery', `%${brewery}%`);
+  if (options.filterBrewery && brewery && brewery !== 'Unknown brewery') {
+    query = query.ilike('brewery', `%${brewery}%`);
+  }
 
-  const { data, error } = await query.maybeSingle();
+  const { data, error } = await query;
   if (error) {
     console.warn('Sake DB lookup error:', error.message);
     return null;
   }
-  if (!data) return null;
-  const row = data as Record<string, unknown>;
-  return { id: String(row.id ?? ''), row };
+  if (!data?.length) return null;
+
+  if (data.length === 1) {
+    const row = data[0] as Record<string, unknown>;
+    return { id: String(row.id ?? ''), row };
+  }
+
+  return pickBestCatalogRow(data as Record<string, unknown>[], name ?? '', nameJp);
+}
+
+async function lookupSakeInDb(
+  supabase: ReturnType<typeof createClient>,
+  guess: SakeInfo,
+): Promise<{ id: string; row: Record<string, unknown> } | null> {
+  const name = guess.name?.trim();
+  const nameJp = guess.nameJapanese?.trim();
+  if (!name && !nameJp) return null;
+
+  const withBrewery = await querySakeByGuess(supabase, guess, { filterBrewery: true });
+  if (withBrewery) return withBrewery;
+
+  const nameOnly = await querySakeByGuess(supabase, guess, { filterBrewery: false });
+  if (nameOnly) return nameOnly;
+
+  const token = catalogSearchToken(name);
+  if (!token || token.length < 3) return null;
+
+  const { data, error } = await supabase
+    .from('sake')
+    .select('*')
+    .ilike('name', `%${token}%`)
+    .order('total_ratings', { ascending: false })
+    .limit(12);
+
+  if (error || !data?.length) return null;
+
+  return pickBestCatalogRow(data as Record<string, unknown>[], name, nameJp);
+}
+
+async function applyCatalogMatch(
+  supabase: ReturnType<typeof createClient>,
+  found: { id: string; row: Record<string, unknown> },
+  scanGuess: SakeInfo,
+): Promise<{ id: string; sake: SakeInfo }> {
+  await enrichSakeRow(supabase, found.id, found.row, scanGuess);
+  const { data: refreshed } = await supabase
+    .from('sake')
+    .select('*')
+    .eq('id', found.id)
+    .maybeSingle();
+
+  const row = (refreshed ?? found.row) as Record<string, unknown>;
+  return { id: found.id, sake: dbRowToSakeInfo(row) };
 }
 
 async function enrichSakeRow(
@@ -462,6 +657,7 @@ Deno.serve(async (req) => {
     let resolvedSake: SakeInfo | null = null;
     let confidence: 'high' | 'medium' | 'low' = 'low';
     let topLevelError: string | null = null;
+    let openaiErrorRaw: string | null = null;
 
     if (we.ok && we.data?.status === 'ok') {
       const top = we.data.result?.[0];
@@ -485,8 +681,9 @@ Deno.serve(async (req) => {
 
           const found = await lookupSakeInDb(supabase, guess);
           if (found) {
-            matchedSakeId = found.id;
-            await enrichSakeRow(supabase, found.id, found.row, guess);
+            const catalog = await applyCatalogMatch(supabase, found, guess);
+            matchedSakeId = catalog.id;
+            resolvedSake = catalog.sake;
           }
         }
       }
@@ -502,14 +699,23 @@ Deno.serve(async (req) => {
 
       if (oai.ok && oai.sake) {
         providerUsed = providerUsed === 'wineengine' ? 'wineengine+openai' : 'openai';
-        resolvedSake = oai.sake;
         confidence = 'medium';
         const found = await lookupSakeInDb(supabase, oai.sake);
-        if (found) matchedSakeId = found.id;
+        if (found) {
+          const catalog = await applyCatalogMatch(supabase, found, oai.sake);
+          matchedSakeId = catalog.id;
+          resolvedSake = catalog.sake;
+        } else {
+          resolvedSake = oai.sake;
+        }
       } else {
-        topLevelError = oai.errorText ?? 'OpenAI fallback failed';
+        openaiErrorRaw = oai.errorText ?? null;
+        topLevelError = toPublicScanError(openaiErrorRaw ?? 'OpenAI fallback failed');
       }
     }
+
+    const experimentError =
+      openaiErrorRaw != null ? openaiErrorRaw.slice(0, 500) : topLevelError;
 
     await logExperiment(supabase, {
       user_id: userId,
@@ -522,7 +728,7 @@ Deno.serve(async (req) => {
       latency_ms_we: weLatencyMs,
       latency_ms_oai: oaiLatencyMs,
       matched_sake_id: matchedSakeId,
-      error: topLevelError,
+      error: experimentError,
     });
 
     if (!resolvedSake) {
@@ -530,7 +736,7 @@ Deno.serve(async (req) => {
         JSON.stringify({
           success: false,
           provider: providerUsed,
-          error: topLevelError ?? 'Could not identify sake label',
+          error: toPublicScanError(topLevelError),
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
@@ -553,7 +759,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: toPublicScanError(error instanceof Error ? error.message : 'Unknown error'),
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
