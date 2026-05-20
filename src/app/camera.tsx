@@ -19,6 +19,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { scanSakeLabel, scanSakeMenu, type MenuPreferences } from '@/lib/openai-scan';
+import { scanSakeLabelV2, isWineEngineEnabled } from '@/lib/wine-engine-scan';
 import { useAuth } from '@/lib/auth-context';
 import { useGuestUsageStore } from '@/lib/guest-usage-store';
 import { useUserFavorites, useUserRatings } from '@/lib/supabase-hooks';
@@ -291,8 +292,15 @@ export default function CameraScreen() {
           setErrorMessage(result.error || 'Could not read the menu. Try a clearer photo.');
         }
       } else {
-        console.log('🔍 Starting sake label scan with OpenAI...');
-        const result = await scanSakeLabel(base64Image);
+        const useWineEngine = isWineEngineEnabled();
+        console.log(
+          useWineEngine
+            ? '🔍 Starting sake label scan with WineEngine cascade...'
+            : '🔍 Starting sake label scan with OpenAI...',
+        );
+        const result = useWineEngine
+          ? await scanSakeLabelV2(base64Image)
+          : await scanSakeLabel(base64Image);
 
         if (result.success && result.sake) {
           console.log('✅ Successfully scanned:', result.sake.name);

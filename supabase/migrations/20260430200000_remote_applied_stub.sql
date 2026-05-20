@@ -1,0 +1,4 @@
+-- Placeholder for remote-applied migration 20260430200000.
+-- This migration was applied directly on the remote project before the
+-- migrations directory was added to source control. The actual schema
+-- changes are already present on the remote database.
