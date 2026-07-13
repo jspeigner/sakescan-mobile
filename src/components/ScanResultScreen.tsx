@@ -5,8 +5,8 @@ import {
   ScrollView,
   Image,
   Pressable,
-  Dimensions,
   ActivityIndicator,
+  Share,
 } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -24,14 +24,22 @@ import {
   Home,
   Flame,
   GlassWater,
+  ChevronRight,
+  Check,
+  X,
+  Search,
+  Camera,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useScanHistoryStore } from '@/lib/scan-history-store';
-import { useCreateSake, useCreateScan } from '@/lib/supabase-hooks';
+import { useCreateSake, useCreateScan, useSake } from '@/lib/supabase-hooks';
 import { getCurrentUser } from '@/lib/supabase';
-
-const { width } = Dimensions.get('window');
+import { buildSakeShareMessage } from '@/lib/share-sake';
+import { catalogSakeToScanInfo } from '@/lib/sake-catalog';
+import { getFlavorTagTip } from '@/lib/sake-learn';
+import { logScanConfirm, logScanWrong } from '@/lib/scan-feedback';
+import type { ScanCandidate } from '@/lib/openai-scan';
 
 interface ScanResultScreenProps {
   /** When set, scan history uses this catalog id instead of creating a duplicate sake row. */
@@ -57,18 +65,29 @@ interface ScanResultScreenProps {
     qualityReasons?: string[];
   };
   imageUri?: string;
+  candidates?: ScanCandidate[];
+  ambiguous?: boolean;
 }
 
 export default function ScanResultScreen({
-  sakeInfo,
+  sakeInfo: initialSakeInfo,
   imageUri,
-  catalogSakeId,
+  catalogSakeId: initialCatalogId,
+  candidates: initialCandidates = [],
+  ambiguous = false,
 }: ScanResultScreenProps) {
   const insets = useSafeAreaInsets();
   const [isSaving, setIsSaving] = useState(false);
+  const [catalogSakeId, setCatalogSakeId] = useState<string | undefined>(initialCatalogId);
+  const [sakeInfo, setSakeInfo] = useState(initialSakeInfo);
+  const [candidates] = useState<ScanCandidate[]>(initialCandidates);
+  const [confirmed, setConfirmed] = useState(false);
+  const [showWrongPicker, setShowWrongPicker] = useState(ambiguous && initialCandidates.length > 1);
+  const [pendingCandidateId, setPendingCandidateId] = useState<string | null>(null);
   const addScan = useScanHistoryStore((s) => s.addScan);
 
-  // Entrance animations — component-level only, no Stack animation prop involved
+  const { data: pendingCandidateSake } = useSake(pendingCandidateId ?? undefined);
+
   const heroOpacity = useSharedValue(0);
   const contentY = useSharedValue(32);
   const contentOpacity = useSharedValue(0);
@@ -79,6 +98,22 @@ export default function ScanResultScreen({
     contentOpacity.value = withDelay(200, withTiming(1, { duration: 450 }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!pendingCandidateSake || !pendingCandidateId) return;
+    const mapped = catalogSakeToScanInfo(pendingCandidateSake);
+    setSakeInfo({
+      ...mapped,
+      confidenceScore: sakeInfo.confidenceScore,
+      scanQualityHint: sakeInfo.scanQualityHint,
+      qualityReasons: sakeInfo.qualityReasons,
+    });
+    setCatalogSakeId(pendingCandidateId);
+    setPendingCandidateId(null);
+    setShowWrongPicker(false);
+    setConfirmed(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingCandidateSake, pendingCandidateId]);
 
   const heroStyle = useAnimatedStyle(() => ({ opacity: heroOpacity.value }));
   const contentStyle = useAnimatedStyle(() => ({
@@ -95,15 +130,14 @@ export default function ScanResultScreen({
         ? { bg: '#FFF6E8', border: '#F3D7A6', text: '#9B6A19' }
         : { bg: '#FDECEC', border: '#F2B8B5', text: '#A0352F' };
 
-  // Save scan to history AND Supabase when component mounts
+  const isLowQuality = sakeInfo.scanQualityHint === 'low';
+
   useEffect(() => {
     const saveScan = async () => {
       try {
-        // Save to local history first (instant feedback)
-        await addScan({ sakeInfo, imageUri });
-        console.log('✅ Scan saved to local history:', sakeInfo.name);
+        await addScan({ sakeInfo: initialSakeInfo, imageUri });
+        console.log('✅ Scan saved to local history:', initialSakeInfo.name);
 
-        // Then save to Supabase for global discovery
         setIsSaving(true);
         const user = await getCurrentUser();
 
@@ -113,32 +147,33 @@ export default function ScanResultScreen({
           return;
         }
 
-        let sakeId = catalogSakeId;
+        let sakeId = initialCatalogId;
 
         if (!sakeId) {
-          console.log('💾 Saving sake to Supabase:', sakeInfo.name);
+          console.log('💾 Saving sake to Supabase:', initialSakeInfo.name);
           const sakeResult = await createSake.mutateAsync({
-            name: sakeInfo.name,
-            nameJapanese: sakeInfo.nameJapanese,
-            brewery: sakeInfo.brewery,
-            type: sakeInfo.type,
-            subtype: sakeInfo.subtype,
-            prefecture: sakeInfo.prefecture,
-            region: sakeInfo.region,
-            description: sakeInfo.description,
-            riceVariety: sakeInfo.riceVariety,
-            polishingRatio: sakeInfo.polishingRatio,
-            alcoholPercentage: sakeInfo.alcoholPercentage,
-            tastingNotes: sakeInfo.tastingNotes,
-            foodPairings: sakeInfo.foodPairings,
-            flavorProfile: sakeInfo.flavorProfile,
-            servingTemperature: sakeInfo.servingTemperature,
+            name: initialSakeInfo.name,
+            nameJapanese: initialSakeInfo.nameJapanese,
+            brewery: initialSakeInfo.brewery,
+            type: initialSakeInfo.type,
+            subtype: initialSakeInfo.subtype,
+            prefecture: initialSakeInfo.prefecture,
+            region: initialSakeInfo.region,
+            description: initialSakeInfo.description,
+            riceVariety: initialSakeInfo.riceVariety,
+            polishingRatio: initialSakeInfo.polishingRatio,
+            alcoholPercentage: initialSakeInfo.alcoholPercentage,
+            tastingNotes: initialSakeInfo.tastingNotes,
+            foodPairings: initialSakeInfo.foodPairings,
+            flavorProfile: initialSakeInfo.flavorProfile,
+            servingTemperature: initialSakeInfo.servingTemperature,
             imageUrl: imageUri,
           });
           sakeId = sakeResult.id;
           if (sakeResult.isNew) {
             console.log('🎉 New sake added to global database!');
           }
+          setCatalogSakeId(sakeId);
         } else {
           console.log('📚 Using catalog sake id:', sakeId);
         }
@@ -154,11 +189,10 @@ export default function ScanResultScreen({
           userId: user.id,
           sakeId,
           imageUrl: imageUri,
-          ocrRawText: JSON.stringify(sakeInfo),
+          ocrRawText: JSON.stringify(initialSakeInfo),
         });
 
         console.log('✅ Scan record saved to Supabase');
-
       } catch (error) {
         console.error('Failed to save scan:', error);
       } finally {
@@ -170,11 +204,80 @@ export default function ScanResultScreen({
 
   const handleShare = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const tastingLine =
+      sakeInfo.tastingNotes?.trim() ||
+      sakeInfo.flavorProfile?.slice(0, 3).join(', ') ||
+      sakeInfo.description?.trim()?.slice(0, 120) ||
+      undefined;
+    try {
+      await Share.share({
+        message: buildSakeShareMessage({
+          name: sakeInfo.name,
+          tastingLine,
+          sakeId: catalogSakeId,
+        }),
+        title: sakeInfo.name,
+      });
+    } catch {
+      // User cancelled or share failed
+    }
+  };
+
+  const handleOpenFullPage = async () => {
+    if (!catalogSakeId) return;
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push(`/sake/${catalogSakeId}`);
+  };
+
+  const handleConfirm = async () => {
+    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    await logScanConfirm({
+      sakeId: catalogSakeId,
+      name: sakeInfo.name,
+      brewery: sakeInfo.brewery,
+    });
+    setConfirmed(true);
+    setShowWrongPicker(false);
+  };
+
+  const handleWrongSake = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    await logScanWrong({
+      sakeId: catalogSakeId,
+      name: sakeInfo.name,
+      brewery: sakeInfo.brewery,
+    });
+    if (candidates.length > 1) {
+      setShowWrongPicker(true);
+      setConfirmed(false);
+      return;
+    }
+    router.push({
+      pathname: '/search-results',
+      params: { query: sakeInfo.name },
+    });
+  };
+
+  const handlePickCandidate = async (candidate: ScanCandidate) => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setPendingCandidateId(candidate.id);
+  };
+
+  const handleSearchInstead = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push({
+      pathname: '/search-results',
+      params: { query: sakeInfo.name },
+    });
+  };
+
+  const handleRetake = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.replace('/camera');
   };
 
   return (
     <View style={{ flex: 1, backgroundColor: '#FAFAF8' }}>
-      {/* Floating header — sits over the hero */}
       <View
         style={{
           position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10,
@@ -214,7 +317,6 @@ export default function ScanResultScreen({
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
       >
-        {/* Hero Image with gradient overlay */}
         <Animated.View style={[{ width: '100%', overflow: 'hidden', height: 420, backgroundColor: '#E8D5B0' }, heroStyle]}>
           {imageUri ? (
             <Image
@@ -227,16 +329,13 @@ export default function ScanResultScreen({
               <GlassWater size={80} color="#C9A227" />
             </View>
           )}
-          {/* Bottom gradient fade into page background */}
           <LinearGradient
             colors={['transparent', 'rgba(250,250,248,0.6)', '#FAFAF8']}
             style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 160 }}
           />
         </Animated.View>
 
-        {/* Content — slides up on mount */}
         <Animated.View style={[{ paddingHorizontal: 20, paddingTop: 4 }, contentStyle]}>
-          {/* Title Section */}
           <View className="mb-2">
             <Text
               className="text-[#1a1a1a]"
@@ -251,14 +350,12 @@ export default function ScanResultScreen({
             )}
           </View>
 
-          {/* Brewery Info */}
           <Text className="text-[#6B6B6B] text-base mb-6">
             {sakeInfo.brewery}
             {(sakeInfo.prefecture || sakeInfo.region) && ' • '}
             {sakeInfo.prefecture || sakeInfo.region}
           </Text>
 
-          {/* Type Badge */}
           <View className="flex-row mb-6">
             <View
               className="px-4 py-2 rounded-full"
@@ -270,6 +367,24 @@ export default function ScanResultScreen({
               </Text>
             </View>
           </View>
+
+          {catalogSakeId ? (
+            <Pressable
+              onPress={handleOpenFullPage}
+              className="mb-6 flex-row items-center justify-between rounded-2xl px-4 py-4"
+              style={{ backgroundColor: '#BC002D' }}
+            >
+              <View className="flex-1 pr-3">
+                <Text className="text-white text-base font-semibold">
+                  Open full sake page
+                </Text>
+                <Text className="text-white/80 text-sm mt-0.5">
+                  Ratings, reviews, and where to buy
+                </Text>
+              </View>
+              <ChevronRight size={22} color="#FFFFFF" />
+            </Pressable>
+          ) : null}
 
           {(sakeInfo.scanQualityHint || sakeInfo.confidenceScore != null) && (
             <View
@@ -286,7 +401,9 @@ export default function ScanResultScreen({
               </Text>
               {sakeInfo.scanQualityHint !== 'high' && (
                 <Text className="mt-1 text-sm text-[#6B6B6B]">
-                  If details look off, retake a closer photo with better lighting.
+                  {isLowQuality
+                    ? 'Fill the frame with the front label, avoid glare, and hold steady in good light.'
+                    : 'If details look off, retake a closer photo with better lighting.'}
                 </Text>
               )}
               {sakeInfo.qualityReasons && sakeInfo.qualityReasons.length > 0 && (
@@ -294,12 +411,101 @@ export default function ScanResultScreen({
                   Missing details: {sakeInfo.qualityReasons.join(' • ')}
                 </Text>
               )}
+              {isLowQuality && (
+                <Pressable
+                  onPress={handleRetake}
+                  className="mt-3 flex-row items-center justify-center rounded-xl py-3"
+                  style={{ backgroundColor: '#BC002D' }}
+                >
+                  <Camera size={16} color="#FFFFFF" />
+                  <Text className="ml-2 text-white text-sm font-semibold">Retake photo</Text>
+                </Pressable>
+              )}
             </View>
           )}
 
-          {/* Specs Cards */}
+          <View
+            className="mb-6 rounded-2xl px-4 py-4"
+            style={{ backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E8E4D9' }}
+          >
+            <Text className="text-[#1a1a1a] text-base font-semibold mb-1">
+              Is this the right bottle?
+            </Text>
+            <Text className="text-[#6B6B6B] text-sm mb-3">
+              Confirm to improve future matches, or pick another sake.
+            </Text>
+            {confirmed ? (
+              <View className="flex-row items-center rounded-xl px-3 py-3" style={{ backgroundColor: '#EAF9EE' }}>
+                <Check size={18} color="#1F7A3C" />
+                <Text className="ml-2 text-sm font-semibold" style={{ color: '#1F7A3C' }}>
+                  Thanks — match confirmed
+                </Text>
+              </View>
+            ) : (
+              <View className="flex-row gap-2">
+                <Pressable
+                  onPress={handleConfirm}
+                  className="flex-1 flex-row items-center justify-center rounded-xl py-3"
+                  style={{ backgroundColor: '#1F7A3C' }}
+                >
+                  <Check size={16} color="#FFFFFF" />
+                  <Text className="ml-2 text-white text-sm font-semibold">Confirm</Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleWrongSake}
+                  className="flex-1 flex-row items-center justify-center rounded-xl py-3"
+                  style={{ backgroundColor: '#F5F3EE' }}
+                >
+                  <X size={16} color="#A0352F" />
+                  <Text className="ml-2 text-sm font-semibold" style={{ color: '#A0352F' }}>
+                    Wrong sake
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+            <Pressable
+              onPress={handleSearchInstead}
+              className="mt-3 flex-row items-center justify-center py-2"
+            >
+              <Search size={14} color="#6B6B6B" />
+              <Text className="ml-1.5 text-sm text-[#6B6B6B]">Search or edit match</Text>
+            </Pressable>
+          </View>
+
+          {showWrongPicker && candidates.length > 0 && (
+            <View className="mb-6">
+              <Text className="text-[#9CA3AF] text-xs font-medium mb-3 uppercase tracking-wide">
+                Did you mean?
+              </Text>
+              {candidates.map((candidate) => {
+                const isActive = candidate.id === catalogSakeId;
+                return (
+                  <Pressable
+                    key={candidate.id}
+                    onPress={() => handlePickCandidate(candidate)}
+                    className="mb-2 flex-row items-center rounded-2xl px-4 py-3"
+                    style={{
+                      backgroundColor: isActive ? '#FFF1F3' : '#FFFFFF',
+                      borderWidth: 1,
+                      borderColor: isActive ? '#BC002D' : '#E8E4D9',
+                    }}
+                  >
+                    <View className="flex-1 pr-2">
+                      <Text className="text-[#1a1a1a] text-base font-semibold">{candidate.name}</Text>
+                      <Text className="text-[#6B6B6B] text-sm mt-0.5">
+                        {candidate.brewery}
+                        {candidate.type ? ` • ${candidate.type}` : ''}
+                      </Text>
+                    </View>
+                    <ChevronRight size={18} color="#9CA3AF" />
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+
           <View className="flex-row mb-6">
-            {sakeInfo.alcoholPercentage && (
+            {sakeInfo.alcoholPercentage ? (
               <View className="flex-1 mr-3">
                 <Text className="text-[#9CA3AF] text-xs font-medium mb-2 uppercase tracking-wide">
                   ABV
@@ -308,8 +514,8 @@ export default function ScanResultScreen({
                   {sakeInfo.alcoholPercentage}%
                 </Text>
               </View>
-            )}
-            {sakeInfo.riceVariety && (
+            ) : null}
+            {sakeInfo.riceVariety ? (
               <View className="flex-1">
                 <Text className="text-[#9CA3AF] text-xs font-medium mb-2 uppercase tracking-wide">
                   Rice Type
@@ -318,10 +524,10 @@ export default function ScanResultScreen({
                   {sakeInfo.riceVariety}
                 </Text>
               </View>
-            )}
+            ) : null}
           </View>
 
-          {sakeInfo.polishingRatio && (
+          {sakeInfo.polishingRatio ? (
             <View className="mb-6">
               <Text className="text-[#9CA3AF] text-xs font-medium mb-2 uppercase tracking-wide">
                 Polishing Ratio
@@ -330,15 +536,14 @@ export default function ScanResultScreen({
                 {sakeInfo.polishingRatio}%
               </Text>
             </View>
-          )}
+          ) : null}
 
-          {/* Flavor Profile */}
-          {sakeInfo.flavorProfile && sakeInfo.flavorProfile.length > 0 && (
+          {sakeInfo.flavorProfile && sakeInfo.flavorProfile.length > 0 ? (
             <View className="mb-6">
               <Text className="text-[#9CA3AF] text-xs font-medium mb-3 uppercase tracking-wide">
                 Flavor Profile
               </Text>
-              <View className="flex-row flex-wrap gap-2">
+              <View className="flex-row flex-wrap gap-2 mb-3">
                 {sakeInfo.flavorProfile.map((flavor, index) => (
                   <View
                     key={`flavor-${index}`}
@@ -356,11 +561,23 @@ export default function ScanResultScreen({
                   </View>
                 ))}
               </View>
+              {sakeInfo.flavorProfile
+                .map((tag) => {
+                  const tip = getFlavorTagTip(tag);
+                  return tip ? { tag, tip } : null;
+                })
+                .filter((item): item is { tag: string; tip: string } => item != null)
+                .slice(0, 3)
+                .map(({ tag, tip }) => (
+                  <Text key={`tip-${tag}`} className="text-sm text-[#6B6B6B] leading-5 mb-1.5">
+                    <Text className="font-semibold text-[#1a1a1a]">{tag}: </Text>
+                    {tip}
+                  </Text>
+                ))}
             </View>
-          )}
+          ) : null}
 
-          {/* Recommended Serving - Display Only */}
-          {sakeInfo.servingTemperature && sakeInfo.servingTemperature.length > 0 && (
+          {sakeInfo.servingTemperature && sakeInfo.servingTemperature.length > 0 ? (
             <View className="mb-6">
               <Text className="text-[#9CA3AF] text-xs font-medium mb-3 uppercase tracking-wide">
                 Recommended Serving
@@ -390,10 +607,9 @@ export default function ScanResultScreen({
                 ))}
               </View>
             </View>
-          )}
+          ) : null}
 
-          {/* Description */}
-          {sakeInfo.description && (
+          {sakeInfo.description ? (
             <View className="mb-6">
               <Text className="text-[#9CA3AF] text-xs font-medium mb-3 uppercase tracking-wide">
                 About This Sake
@@ -402,10 +618,9 @@ export default function ScanResultScreen({
                 {sakeInfo.description}
               </Text>
             </View>
-          )}
+          ) : null}
 
-          {/* Tasting Notes */}
-          {sakeInfo.tastingNotes && (
+          {sakeInfo.tastingNotes ? (
             <View className="mb-6">
               <Text className="text-[#9CA3AF] text-xs font-medium mb-3 uppercase tracking-wide">
                 Tasting Notes
@@ -414,10 +629,9 @@ export default function ScanResultScreen({
                 {sakeInfo.tastingNotes}
               </Text>
             </View>
-          )}
+          ) : null}
 
-          {/* Food Pairings */}
-          {sakeInfo.foodPairings && sakeInfo.foodPairings.length > 0 && (
+          {sakeInfo.foodPairings && sakeInfo.foodPairings.length > 0 ? (
             <View className="mb-8">
               <Text className="text-[#9CA3AF] text-xs font-medium mb-3 uppercase tracking-wide">
                 Food Pairings
@@ -436,7 +650,7 @@ export default function ScanResultScreen({
                 ))}
               </View>
             </View>
-          )}
+          ) : null}
         </Animated.View>
       </ScrollView>
     </View>

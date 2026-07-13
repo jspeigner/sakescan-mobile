@@ -13,7 +13,7 @@ import { router } from 'expo-router';
 import {
   BookOpen,
   ScanLine,
-  Star,
+  Bookmark,
   Sparkles,
   ChevronLeft,
   Check,
@@ -23,10 +23,10 @@ import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/lib/theme-context';
 
 const FEATURES = [
-  { icon: BookOpen, label: 'Full Sake Menu Scanner', desc: 'Scan any restaurant menu and see every sake with prices & profiles' },
+  { icon: BookOpen, label: 'Unlimited Menu Scans', desc: 'Scan any restaurant or izakaya menu—no caps on how often you check the list' },
+  { icon: Bookmark, label: 'Saved Menus', desc: 'Keep past menu scans so you can revisit picks and prices later' },
+  { icon: Sparkles, label: 'Richer Recommendations', desc: 'Taste-matched top picks with clearer value and pairing reasons' },
   { icon: ScanLine, label: 'Unlimited Label Scans', desc: 'No limits on individual bottle label scanning' },
-  { icon: Star, label: 'Save & Rate Sakes', desc: 'Build your personal sake collection and share reviews' },
-  { icon: Sparkles, label: 'AI Flavor Analysis', desc: 'Detailed tasting notes, food pairings, and serving recommendations' },
 ];
 
 export default function PaywallScreen() {
@@ -120,7 +120,7 @@ export default function PaywallScreen() {
               lineHeight: 24,
             }}
           >
-            Create a free account to access the full{'\n'}menu scanner and unlimited features.
+            Create a free account for unlimited menu scans,{'\n'}saved menus, and richer recommendations.
           </Text>
         </Animated.View>
 

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Text, View, ScrollView, Pressable, ActivityIndicator } from 'react-native';
 import { SakeImage } from '@/components/SakeImage';
-import { Search, Star, Bell, ChevronDown, User, SlidersHorizontal, GlassWater, Clock, Globe, RefreshCw } from 'lucide-react-native';
+import { Search, Star, Bell, ChevronDown, User, SlidersHorizontal, GlassWater, Clock, Globe, RefreshCw, BookOpen, Users } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -9,6 +9,7 @@ import { useSakeList, useSakeByRegion, useAllScans } from '@/lib/supabase-hooks'
 import { resolveSakeImageUrl } from '@/lib/supabase';
 import type { Sake as SupabaseSake } from '@/lib/database.types';
 import { useScanHistoryStore } from '@/lib/scan-history-store';
+import { isSocialEnabled } from '@/lib/social-hooks';
 
 type FilterType = 'All Types' | 'Junmai' | 'Ginjo' | 'Daiginjo' | 'Honjozo';
 
@@ -103,7 +104,21 @@ export default function ExploreScreen() {
   const globalScannedSake = (allScansData ?? [])
     .filter(scan => scan.sake)
     .map(scan => {
-      const sake = scan.sake!;
+      const sake = scan.sake as {
+        id?: string;
+        name?: string;
+        brewery?: string;
+        type?: string;
+        image_url?: string | null;
+        average_rating?: number | null;
+        tasting_notes?: string | null;
+        flavor_tags?: string[] | null;
+      };
+      const note =
+        sake.tasting_notes?.trim() ||
+        (sake.flavor_tags && sake.flavor_tags.length > 0
+          ? sake.flavor_tags.slice(0, 2).join(' · ')
+          : null);
       return {
         id: sake.id ?? 'unknown',
         name: sake.name ?? 'Unknown',
@@ -111,6 +126,7 @@ export default function ExploreScreen() {
         sakeType: sake.type ?? 'Other',
         avgRating: sake.average_rating ?? 0,
         labelImageUrl: resolveSakeImageUrl(sake.image_url) ?? null,
+        shortNote: note,
         scanCount: 1,
         scannedAt: scan.created_at,
       };
@@ -144,7 +160,10 @@ export default function ExploreScreen() {
             SakeScan
           </Text>
         </View>
-        <Pressable className="w-10 h-10 rounded-full bg-[#F0EDE5] items-center justify-center">
+        <Pressable
+          onPress={() => router.push('/notifications')}
+          className="w-10 h-10 rounded-full bg-[#F0EDE5] items-center justify-center"
+        >
           <Bell size={20} color="#1a1a1a" />
         </Pressable>
       </View>
@@ -154,6 +173,31 @@ export default function ExploreScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 100 }}
       >
+        {isSocialEnabled() && (
+          <Pressable
+            onPress={async () => {
+              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/feed');
+            }}
+            className="mx-5 mb-4 flex-row items-center rounded-2xl px-4 py-4"
+            style={{ backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#F0EDE5' }}
+          >
+            <View
+              className="w-11 h-11 rounded-full items-center justify-center"
+              style={{ backgroundColor: '#FCE8EC' }}
+            >
+              <Users size={20} color="#BC002D" />
+            </View>
+            <View className="flex-1 ml-3">
+              <Text className="text-[#1a1a1a] font-semibold text-base">Activity feed</Text>
+              <Text className="text-[#6B6B6B] text-sm mt-0.5">
+                Scans and reviews from people you follow
+              </Text>
+            </View>
+            <ChevronDown size={18} color="#9CA3AF" style={{ transform: [{ rotate: '-90deg' }] }} />
+          </Pressable>
+        )}
+
         {/* Search Bar */}
         <View className="px-5 pt-2 pb-4">
           <Pressable
@@ -174,7 +218,7 @@ export default function ExploreScreen() {
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ paddingHorizontal: 20, gap: 8 }}
-          style={{ flexGrow: 0, marginBottom: 16 }}
+          style={{ flexGrow: 0, marginBottom: 8 }}
         >
           {(['All Types', 'Junmai', 'Ginjo', 'Daiginjo', 'Honjozo'] as FilterType[]).map((filter) => (
             <Pressable
@@ -196,6 +240,23 @@ export default function ExploreScreen() {
             </Pressable>
           ))}
         </ScrollView>
+
+        <Pressable
+          onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push({
+              pathname: '/sake-learn',
+              params: activeFilter !== 'All Types' ? { type: activeFilter } : {},
+            });
+          }}
+          className="mx-5 mb-4 flex-row items-center self-start px-3 py-2 rounded-full"
+          style={{ backgroundColor: 'rgba(188, 0, 45, 0.08)' }}
+        >
+          <BookOpen size={14} color="#BC002D" />
+          <Text className="ml-1.5 text-xs font-semibold" style={{ color: '#BC002D' }}>
+            What do these types mean?
+          </Text>
+        </Pressable>
 
         {isError ? (
           <View className="items-center py-16 px-5">
@@ -252,7 +313,9 @@ export default function ExploreScreen() {
                 <View className="flex-row justify-between items-center mb-4">
                   <View className="flex-row items-center">
                     <Globe size={20} color="#C9A227" />
-                    <Text className="text-lg font-bold text-[#1a1a1a] ml-2">Community Discoveries</Text>
+                    <Text className="text-lg font-bold text-[#1a1a1a] ml-2">
+                      {isSocialEnabled() ? 'From the community' : 'Community Discoveries'}
+                    </Text>
                   </View>
                   <View className="px-2 py-1 rounded-full bg-[#C9A227]/10">
                     <Text className="text-[#C9A227] text-xs font-semibold">
@@ -291,6 +354,9 @@ export default function ExploreScreen() {
                       <Text className="text-[#8B8B8B] text-xs" numberOfLines={1}>
                         {sake.breweryName}
                       </Text>
+                      <Text className="text-[#8B8B8B] text-xs mt-0.5" numberOfLines={1}>
+                        {sake.sakeType}
+                      </Text>
                       {sake.avgRating > 0 && (
                         <View className="flex-row items-center mt-1">
                           <Star size={10} fill="#C9A227" color="#C9A227" />
@@ -299,6 +365,11 @@ export default function ExploreScreen() {
                           </Text>
                         </View>
                       )}
+                      {sake.shortNote ? (
+                        <Text className="text-[#6B6B6B] text-xs mt-1 leading-4" numberOfLines={2}>
+                          {sake.shortNote}
+                        </Text>
+                      ) : null}
                     </Pressable>
                   ))}
                 </ScrollView>

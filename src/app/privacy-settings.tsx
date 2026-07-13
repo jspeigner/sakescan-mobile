@@ -1,14 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Text, View, ScrollView, Pressable, Switch, Alert } from 'react-native';
 import { ChevronLeft, Eye, EyeOff, MapPin, BarChart3, Share2, Trash2 } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/lib/auth-context';
+import { usePublicProfile, useUpdateActivityPrivacy, isSocialEnabled } from '@/lib/social-hooks';
 
 export default function PrivacySettingsScreen() {
   const insets = useSafeAreaInsets();
   const { user, isGuest } = useAuth();
+  const { data: profile } = usePublicProfile(user?.id);
+  const updateActivityPrivacy = useUpdateActivityPrivacy();
 
   // Privacy settings state
   const [profileVisible, setProfileVisible] = useState(true);
@@ -17,10 +20,27 @@ export default function PrivacySettingsScreen() {
   const [analyticsEnabled, setAnalyticsEnabled] = useState(true);
   const [personalizedAds, setPersonalizedAds] = useState(false);
 
+  useEffect(() => {
+    if (profile && typeof profile.activity_public === 'boolean') {
+      setShowActivity(profile.activity_public);
+    }
+  }, [profile?.activity_public]);
+
   const handleToggle = async (setter: (value: boolean) => void, value: boolean) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setter(value);
-    // TODO: Persist to AsyncStorage or user settings in Supabase
+  };
+
+  const handleActivityToggle = async (value: boolean) => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setShowActivity(value);
+    if (!user?.id || isGuest || !isSocialEnabled()) return;
+    try {
+      await updateActivityPrivacy.mutateAsync({ userId: user.id, activityPublic: value });
+    } catch {
+      setShowActivity(!value);
+      Alert.alert('Error', 'Could not update activity privacy.');
+    }
   };
 
   const handleClearScanHistory = async () => {
@@ -158,7 +178,7 @@ export default function PrivacySettingsScreen() {
               </View>
               <Switch
                 value={showActivity}
-                onValueChange={(v) => handleToggle(setShowActivity, v)}
+                onValueChange={handleActivityToggle}
                 trackColor={{ false: '#E5E5E5', true: '#C9A227' }}
                 thumbColor="#FFFFFF"
               />

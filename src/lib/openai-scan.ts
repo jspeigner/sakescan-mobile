@@ -1,3 +1,6 @@
+import { findCatalogSakeMatch } from './sake-catalog';
+import { supabase } from './supabase';
+
 export interface SakeInfo {
   name: string;
   nameJapanese?: string;
@@ -19,11 +22,25 @@ export interface SakeInfo {
   qualityReasons?: string[];
 }
 
+export interface ScanCandidate {
+  id: string;
+  name: string;
+  brewery: string;
+  nameJapanese?: string;
+  type?: string;
+  imageUrl?: string;
+  polishingRatio?: number;
+  score: number;
+}
+
 export interface ScanResult {
   success: boolean;
   sake?: SakeInfo;
   /** Set when the scan matched an existing row in `public.sake`. */
   sakeId?: string;
+  /** Close alternate matches for "Did you mean?" UI. */
+  candidates?: ScanCandidate[];
+  ambiguous?: boolean;
   error?: string;
 }
 
@@ -35,14 +52,20 @@ export interface MenuSakeItem {
   price?: string;
   size?: string;
   description?: string;
+  tastingNotes?: string;
   flavorProfile?: string[];
   servingTemperature?: string[];
   alcoholPercentage?: number;
   polishingRatio?: number;
+  /** Catalog match when resolved after Vision extract. */
+  sakeId?: string;
+  averageRating?: number;
   recommendationScore?: number;
   recommendationTier?: 'Top Pick' | 'Good Match' | 'Try If Curious';
   recommendationReasons?: string[];
   valueLabel?: 'Great Value' | 'Fair Price' | 'Premium Price';
+  /** Peer-aware chip e.g. Best value / Splurge / Best value Junmai */
+  valueChip?: string;
 }
 
 export interface MenuScanResult {
@@ -166,6 +189,41 @@ function getMedian(values: number[]): number {
   return sorted[middle];
 }
 
+type ServingKind = 'glass' | 'bottle' | 'carafe' | 'unknown';
+
+function detectServingKind(size?: string, price?: string): ServingKind {
+  const blob = `${size ?? ''} ${price ?? ''}`.toLowerCase();
+  if (/\b(glass|ogi|小|杯|by the glass|btg)\b/.test(blob) || /\b1?\s?8\s?0\s?ml\b/.test(blob)) {
+    return 'glass';
+  }
+  if (/\b(bottle|btl|ビン|瓶|720|750)\b/.test(blob)) {
+    return 'bottle';
+  }
+  if (/\b(carafe|tokkuri|徳利|300|360|500)\b/.test(blob)) {
+    return 'carafe';
+  }
+  return 'unknown';
+}
+
+/** Normalize listed price toward a glass-equivalent for peer comparison. */
+function toComparablePrice(price: number, kind: ServingKind): number {
+  if (kind === 'bottle') return price / 4;
+  if (kind === 'carafe') return price / 2;
+  return price;
+}
+
+function peerTypeKey(type?: string): string {
+  const normalized = type?.toLowerCase() ?? '';
+  if (normalized.includes('daiginjo')) return 'Daiginjo';
+  if (normalized.includes('ginjo')) return 'Ginjo';
+  if (normalized.includes('junmai')) return 'Junmai';
+  if (normalized.includes('nigori')) return 'Nigori';
+  if (normalized.includes('sparkling')) return 'Sparkling';
+  if (normalized.includes('honjozo')) return 'Honjozo';
+  if (type?.trim()) return type.trim();
+  return 'Other';
+}
+
 function mapTypeToFlavorHints(type?: string): string[] {
   const normalized = type?.toLowerCase() ?? '';
   if (normalized.includes('daiginjo') || normalized.includes('ginjo')) {
@@ -186,6 +244,45 @@ function mapTypeToFlavorHints(type?: string): string[] {
   return ['Crisp', 'Smooth'];
 }
 
+async function groundMenuItemsInCatalog(items: MenuSakeItem[]): Promise<MenuSakeItem[]> {
+  return Promise.all(
+    items.map(async (item) => {
+      try {
+        const match = await findCatalogSakeMatch(item.name, item.brewery ?? '');
+        if (!match) return item;
+
+        const catalog = match.sake;
+        return {
+          ...item,
+          sakeId: match.id,
+          brewery: item.brewery ?? catalog.brewery,
+          type: item.type ?? catalog.type,
+          nameJapanese: item.nameJapanese ?? catalog.nameJapanese,
+          flavorProfile:
+            catalog.flavorProfile?.length ? catalog.flavorProfile : item.flavorProfile,
+          tastingNotes: catalog.tastingNotes ?? item.tastingNotes,
+          description: catalog.description?.trim()
+            ? catalog.description
+            : item.description,
+          servingTemperature:
+            catalog.servingTemperature?.length
+              ? catalog.servingTemperature
+              : item.servingTemperature,
+          alcoholPercentage: item.alcoholPercentage ?? catalog.alcoholPercentage,
+          polishingRatio: item.polishingRatio ?? catalog.polishingRatio,
+          averageRating:
+            typeof match.averageRating === 'number' && Number.isFinite(match.averageRating)
+              ? match.averageRating
+              : undefined,
+        };
+      } catch (err) {
+        console.warn('Menu catalog match skipped for', item.name, err);
+        return item;
+      }
+    })
+  );
+}
+
 function scoreMenuRecommendations(
   items: MenuSakeItem[],
   preferences?: MenuPreferences
@@ -195,23 +292,54 @@ function scoreMenuRecommendations(
     : ['Crisp', 'Dry', 'Umami'];
   const budgetBias = preferences?.budgetBias ?? 'balanced';
 
-  const parsedPrices = items.map((item) => parsePriceValue(item.price));
-  const validPrices = parsedPrices.filter((value): value is number => value !== null);
-  const medianPrice = validPrices.length > 0 ? getMedian(validPrices) : null;
+  const servingKinds = items.map((item) => detectServingKind(item.size, item.price));
+  const rawPrices = items.map((item) => parsePriceValue(item.price));
+  const comparablePrices = items.map((item, index) => {
+    const price = rawPrices[index];
+    if (price === null) return null;
+    return toComparablePrice(price, servingKinds[index]);
+  });
 
-  return items.map((item, index) => {
-    const itemFlavors = item.flavorProfile?.length ? item.flavorProfile : mapTypeToFlavorHints(item.type);
-    const matches = itemFlavors.filter((flavor) => preferredFlavors.includes(flavor)).length;
-    const tasteMatch = Math.min(100, Math.round((matches / Math.max(1, preferredFlavors.length)) * 100));
+  const peerMedians = new Map<string, number>();
+  const peerGroups = new Map<string, number[]>();
+  items.forEach((item, index) => {
+    const key = peerTypeKey(item.type);
+    const comparable = comparablePrices[index];
+    if (comparable === null) return;
+    const list = peerGroups.get(key) ?? [];
+    list.push(comparable);
+    peerGroups.set(key, list);
+  });
+  for (const [key, prices] of peerGroups) {
+    if (prices.length > 0) peerMedians.set(key, getMedian(prices));
+  }
 
-    const price = parsedPrices[index];
+  const globalValid = comparablePrices.filter((v): v is number => v !== null);
+  const globalMedian = globalValid.length > 0 ? getMedian(globalValid) : null;
+
+  const scored = items.map((item, index) => {
+    const itemFlavors = item.flavorProfile?.length
+      ? item.flavorProfile
+      : mapTypeToFlavorHints(item.type);
+    const matchedFlavors = itemFlavors.filter((flavor) => preferredFlavors.includes(flavor));
+    const matches = matchedFlavors.length;
+    const tasteMatch = Math.min(
+      100,
+      Math.round((matches / Math.max(1, preferredFlavors.length)) * 100)
+    );
+
+    const peerKey = peerTypeKey(item.type);
+    const peerMedian = peerMedians.get(peerKey) ?? globalMedian;
+    const comparable = comparablePrices[index];
+    const kind = servingKinds[index];
+
     let valueScore = 55;
     let valueLabel: 'Great Value' | 'Fair Price' | 'Premium Price' = 'Fair Price';
-    if (price !== null && medianPrice !== null) {
-      if (price <= medianPrice * 0.85) {
+    if (comparable !== null && peerMedian != null) {
+      if (comparable <= peerMedian * 0.85) {
         valueScore = budgetBias === 'premium' ? 68 : 95;
         valueLabel = 'Great Value';
-      } else if (price >= medianPrice * 1.2) {
+      } else if (comparable >= peerMedian * 1.2) {
         valueScore = budgetBias === 'premium' ? 82 : 42;
         valueLabel = 'Premium Price';
       } else {
@@ -220,31 +348,66 @@ function scoreMenuRecommendations(
     }
 
     let confidence = 50;
-    if (item.type) confidence += 12;
-    if (item.price) confidence += 12;
-    if (item.flavorProfile?.length) confidence += 14;
-    if (item.description) confidence += 8;
+    if (item.sakeId) confidence += 18;
+    if (item.type) confidence += 10;
+    if (item.price) confidence += 10;
+    if (item.flavorProfile?.length) confidence += 10;
+    if (item.tastingNotes) confidence += 8;
+    if (item.description) confidence += 6;
     if (item.servingTemperature?.length) confidence += 4;
+    if (item.averageRating != null) confidence += 4;
     confidence = Math.min(100, confidence);
 
-    const recommendationScore = Math.round(0.55 * tasteMatch + 0.3 * valueScore + 0.15 * confidence);
-    const recommendationTier =
-      recommendationScore >= 78 ? 'Top Pick' : recommendationScore >= 62 ? 'Good Match' : 'Try If Curious';
+    const recommendationScore = Math.round(
+      0.55 * tasteMatch + 0.3 * valueScore + 0.15 * confidence
+    );
+    const recommendationTier: MenuSakeItem['recommendationTier'] =
+      recommendationScore >= 78
+        ? 'Top Pick'
+        : recommendationScore >= 62
+          ? 'Good Match'
+          : 'Try If Curious';
 
     const recommendationReasons: string[] = [];
     if (matches > 0) {
-      recommendationReasons.push(`Matches ${matches} taste profile preference${matches > 1 ? 's' : ''}`);
+      const flavorList = matchedFlavors.slice(0, 3).join('/');
+      recommendationReasons.push(
+        item.tastingNotes
+          ? `Matches your ${flavorList} prefs; ${item.tastingNotes.slice(0, 72)}${
+              item.tastingNotes.length > 72 ? '…' : ''
+            }`
+          : `Matches your ${flavorList} taste preference${matches > 1 ? 's' : ''}`
+      );
+    } else if (item.tastingNotes) {
+      recommendationReasons.push(
+        `Notes: ${item.tastingNotes.slice(0, 80)}${item.tastingNotes.length > 80 ? '…' : ''}`
+      );
     } else {
-      recommendationReasons.push('Flavor profile is less aligned with your saved preferences');
+      recommendationReasons.push('Flavor profile is less aligned with your taste prefs');
     }
-    recommendationReasons.push(
-      valueLabel === 'Great Value'
-        ? 'Priced below menu median'
-        : valueLabel === 'Premium Price'
-          ? 'Priced above menu median'
-          : 'Priced around menu median'
-    );
-    if (!item.flavorProfile?.length) {
+
+    if (comparable !== null && peerMedian != null && item.price) {
+      const peerLabel = peerKey === 'Other' ? 'this menu' : peerKey.toLowerCase();
+      if (valueLabel === 'Great Value') {
+        recommendationReasons.push(
+          `${item.price}${kind !== 'unknown' ? ` ${kind}` : ''} is below median for ${peerLabel} here`
+        );
+      } else if (valueLabel === 'Premium Price') {
+        recommendationReasons.push(
+          `${item.price}${kind !== 'unknown' ? ` ${kind}` : ''} sits above median for ${peerLabel} here`
+        );
+      } else {
+        recommendationReasons.push(
+          `${item.price} is around the ${peerLabel} median on this menu`
+        );
+      }
+    } else if (item.price) {
+      recommendationReasons.push(`Listed at ${item.price}`);
+    }
+
+    if (item.averageRating != null && item.averageRating >= 4) {
+      recommendationReasons.push(`Catalog avg ${item.averageRating.toFixed(1)}★`);
+    } else if (!item.sakeId && !item.flavorProfile?.length) {
       recommendationReasons.push('Taste guidance inferred from sake type');
     }
 
@@ -254,7 +417,45 @@ function scoreMenuRecommendations(
       recommendationTier,
       recommendationReasons: recommendationReasons.slice(0, 3),
       valueLabel,
+      _peerKey: peerKey,
+      _comparable: comparable,
+      _kind: kind,
     };
+  });
+
+  // Assign Best value / Splurge chips vs peer type on the same menu
+  const bestValueByPeer = new Map<string, number>();
+  for (const row of scored) {
+    if (row._comparable == null || row.valueLabel !== 'Great Value') continue;
+    const prev = bestValueByPeer.get(row._peerKey);
+    if (prev == null || row._comparable < prev) {
+      bestValueByPeer.set(row._peerKey, row._comparable);
+    }
+  }
+
+  return scored.map((row) => {
+    let valueChip: string | undefined;
+    if (
+      row._comparable != null &&
+      bestValueByPeer.get(row._peerKey) === row._comparable &&
+      row.valueLabel === 'Great Value'
+    ) {
+      valueChip =
+        row._peerKey !== 'Other' ? `Best value ${row._peerKey}` : 'Best value';
+    } else if (
+      row.valueLabel === 'Premium Price' &&
+      (row.recommendationTier === 'Top Pick' || budgetBias === 'premium')
+    ) {
+      valueChip =
+        row._peerKey !== 'Other' ? `Splurge ${row._peerKey}` : 'Splurge';
+    } else if (row.valueLabel === 'Great Value') {
+      valueChip = 'Best value';
+    } else if (row.valueLabel === 'Premium Price') {
+      valueChip = 'Splurge';
+    }
+
+    const { _peerKey: _pk, _comparable: _c, _kind: _k, ...item } = row;
+    return { ...item, valueChip };
   });
 }
 
@@ -402,189 +603,239 @@ function getLabelQualityMetrics(sakeInfo: SakeInfo): {
   };
 }
 
+function isWeakString(value: string | undefined): boolean {
+  const v = value?.trim() ?? '';
+  return (
+    v.length === 0 ||
+    v === 'No description available.' ||
+    v.toLowerCase() === 'other' ||
+    v.toLowerCase() === 'sake' ||
+    v.toLowerCase() === 'unknown brewery'
+  );
+}
+
+/** Fill empty narrative/spec fields from enrichment; never overwrite solid Vision/catalog facts. */
+function mergeSakeEnrichment(base: SakeInfo, fill: Partial<SakeInfo>): SakeInfo {
+  return {
+    ...base,
+    nameJapanese: base.nameJapanese || fill.nameJapanese,
+    type: !isWeakString(base.type) ? base.type : fill.type || base.type,
+    subtype: base.subtype || fill.subtype,
+    prefecture: base.prefecture || fill.prefecture,
+    region: base.region || fill.region,
+    description: !isWeakString(base.description) && (base.description?.length ?? 0) >= 40
+      ? base.description
+      : fill.description || base.description,
+    tastingNotes: base.tastingNotes || fill.tastingNotes,
+    foodPairings: base.foodPairings?.length ? base.foodPairings : fill.foodPairings,
+    riceVariety: base.riceVariety || fill.riceVariety,
+    polishingRatio: base.polishingRatio ?? fill.polishingRatio,
+    alcoholPercentage: base.alcoholPercentage ?? fill.alcoholPercentage,
+    flavorProfile: base.flavorProfile?.length ? base.flavorProfile : fill.flavorProfile,
+    servingTemperature: base.servingTemperature?.length
+      ? base.servingTemperature
+      : fill.servingTemperature,
+  };
+}
+
+interface EdgeScanCandidate {
+  id?: unknown;
+  name?: unknown;
+  brewery?: unknown;
+  name_japanese?: unknown;
+  nameJapanese?: unknown;
+  type?: unknown;
+  image_url?: unknown;
+  imageUrl?: unknown;
+  polishing_ratio?: unknown;
+  polishingRatio?: unknown;
+  score?: unknown;
+}
+
+interface EdgeScanLabelResponse {
+  success?: boolean;
+  message?: string;
+  extracted?: RawLabelSakeInfo & Record<string, unknown>;
+  matched_sake?: (RawLabelSakeInfo & { id?: string; name_japanese?: string; image_url?: string; polishing_ratio?: number }) | null;
+  sakeId?: string | null;
+  candidates?: EdgeScanCandidate[];
+  confidence?: number;
+  scanQualityHint?: 'high' | 'medium' | 'low';
+  qualityReasons?: string[];
+  ambiguous?: boolean;
+  enrichment?: Record<string, unknown> | null;
+}
+
+function mapEdgeCandidate(raw: EdgeScanCandidate): ScanCandidate | null {
+  const id = toOptionalString(raw.id);
+  const name = toKnownOptionalString(raw.name);
+  const brewery = toKnownOptionalString(raw.brewery);
+  if (!id || !name || !brewery) return null;
+  return {
+    id,
+    name,
+    brewery,
+    nameJapanese: toKnownOptionalString(raw.nameJapanese ?? raw.name_japanese),
+    type: toKnownOptionalString(raw.type),
+    imageUrl: toKnownOptionalString(raw.imageUrl ?? raw.image_url),
+    polishingRatio: toOptionalNumber(raw.polishingRatio ?? raw.polishing_ratio, 0),
+    score: toOptionalNumber(raw.score) ?? 0,
+  };
+}
+
+/**
+ * Label scan via Supabase Edge Function (Vision + catalog match + enrichment).
+ * OpenAI key stays server-side. Edge-only — clear errors on failure.
+ */
 export async function scanSakeLabel(imageBase64: string): Promise<ScanResult> {
   try {
-    const apiKey =
-      process.env.EXPO_PUBLIC_OPENAI_API_KEY?.trim() ||
-      process.env.EXPO_PUBLIC_VIBECODE_OPENAI_API_KEY?.trim();
+    console.log('🔍 Analyzing sake label via scan-label edge function...');
 
-    if (!apiKey) {
-      console.error('OpenAI API key not found in environment variables');
+    const { data, error } = await supabase.functions.invoke('scan-label', {
+      body: { image_base64: imageBase64 },
+    });
+
+    if (error) {
+      console.error('scan-label edge invoke error:', error);
       return {
         success: false,
         error:
-          'API key not configured. Add EXPO_PUBLIC_OPENAI_API_KEY to your .env file (legacy: EXPO_PUBLIC_VIBECODE_OPENAI_API_KEY).',
+          error.message ||
+          'Label scan service unavailable. Check your connection and try again.',
       };
     }
 
-    console.log('🔍 Analyzing sake label with OpenAI Vision...');
+    const payload = (data ?? {}) as EdgeScanLabelResponse;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: `You are reading one sake bottle label photo.
-
-Extract label information from visible text only:
-- Include the primary sake name and brewery when visible
-- Use type values like Junmai, Ginjo, Daiginjo, Honjozo, Nigori, Sparkling, Futsushu, Other
-- Omit fields you cannot determine (do not invent)
-- Keep description concise (1-2 sentences)
-- Return factual output only`,
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: `data:image/jpeg;base64,${imageBase64}`,
-                },
-              },
-            ],
-          },
-        ],
-        response_format: {
-          type: 'json_schema',
-          json_schema: {
-            name: 'sake_label',
-            schema: {
-              type: 'object',
-              additionalProperties: false,
-              properties: {
-                name: { type: 'string' },
-                nameJapanese: { type: 'string' },
-                brewery: { type: 'string' },
-                type: { type: 'string' },
-                subtype: { type: 'string' },
-                prefecture: { type: 'string' },
-                region: { type: 'string' },
-                description: { type: 'string' },
-                tastingNotes: { type: 'string' },
-                foodPairings: {
-                  type: 'array',
-                  items: { type: 'string' },
-                },
-                riceVariety: { type: 'string' },
-                polishingRatio: { type: 'number' },
-                alcoholPercentage: { type: 'number' },
-                flavorProfile: {
-                  type: 'array',
-                  items: { type: 'string' },
-                },
-                servingTemperature: {
-                  type: 'array',
-                  items: { type: 'string' },
-                },
-              },
-              required: ['name', 'brewery'],
-            },
-          },
-        },
-        max_tokens: 1200,
-        temperature: 0.2,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('OpenAI API error:', response.status, errorText);
-
-      if (response.status === 401) {
-        return {
-          success: false,
-          error: 'Invalid API key. Please check your OpenAI API key configuration.'
-        };
-      } else if (response.status === 429) {
-        return {
-          success: false,
-          error: 'Rate limit exceeded. Please try again in a moment.'
-        };
-      } else if (response.status === 402) {
-        return {
-          success: false,
-          error: 'OpenAI account has insufficient credits. Please add credits at platform.openai.com.'
-        };
-      }
-
+    if (!payload.success || !payload.extracted) {
       return {
         success: false,
-        error: `OpenAI API error: ${response.status}`
+        error:
+          payload.message ||
+          'Could not identify sake information. Please make sure the label is clearly visible.',
+        candidates: (payload.candidates ?? [])
+          .map(mapEdgeCandidate)
+          .filter((c): c is ScanCandidate => Boolean(c)),
       };
     }
 
-    const data = await response.json();
-    const choice = data.choices?.[0];
-    const content = choice?.message?.content;
+    // Normalize snake_case matched row fields into camelCase extract shape when needed
+    const extractedRaw: RawLabelSakeInfo = {
+      ...payload.extracted,
+      nameJapanese:
+        payload.extracted.nameJapanese ??
+        (payload.extracted as Record<string, unknown>).name_japanese,
+      tastingNotes:
+        payload.extracted.tastingNotes ??
+        (payload.extracted as Record<string, unknown>).tasting_notes,
+      foodPairings:
+        payload.extracted.foodPairings ??
+        (payload.extracted as Record<string, unknown>).food_pairings,
+      riceVariety:
+        payload.extracted.riceVariety ??
+        (payload.extracted as Record<string, unknown>).rice_variety,
+      polishingRatio:
+        payload.extracted.polishingRatio ??
+        (payload.extracted as Record<string, unknown>).polishing_ratio,
+      alcoholPercentage:
+        payload.extracted.alcoholPercentage ??
+        (payload.extracted as Record<string, unknown>).alcohol_percentage,
+      flavorProfile:
+        payload.extracted.flavorProfile ??
+        (payload.extracted as Record<string, unknown>).flavor_profile,
+      servingTemperature:
+        payload.extracted.servingTemperature ??
+        (payload.extracted as Record<string, unknown>).serving_temperature,
+    };
 
-    if (!content) {
-      console.error('No content in OpenAI response:', data);
+    const normalized = normalizeLabelSakeInfo(extractedRaw);
+    if (!normalized) {
       return {
         success: false,
-        error: 'No analysis result from OpenAI'
+        error: 'Could not identify sake information. Please make sure the label is clearly visible.',
       };
     }
 
-    if (choice?.finish_reason === 'length') {
-      return {
-        success: false,
-        error: 'This label photo has too much text to parse in one pass. Move closer and focus on the bottle label.',
+    const qualityFromEdge =
+      payload.confidence != null || payload.scanQualityHint
+        ? {
+            confidenceScore: payload.confidence ?? getLabelQualityMetrics(normalized).confidenceScore,
+            scanQualityHint:
+              payload.scanQualityHint ?? getLabelQualityMetrics(normalized).scanQualityHint,
+            qualityReasons:
+              payload.qualityReasons ?? getLabelQualityMetrics(normalized).qualityReasons,
+          }
+        : getLabelQualityMetrics(normalized);
+
+    let sakeInfo: SakeInfo = {
+      ...normalized,
+      ...qualityFromEdge,
+    };
+
+    // Prefer catalog row details when matched
+    const matched = payload.matched_sake;
+    const sakeId =
+      toOptionalString(payload.sakeId) ??
+      toOptionalString(matched?.id) ??
+      undefined;
+
+    if (matched && typeof matched.name === 'string' && typeof matched.brewery === 'string') {
+      const catalogAsScan: Partial<SakeInfo> = {
+        name: matched.name,
+        brewery: matched.brewery,
+        nameJapanese: toKnownOptionalString(
+          (matched as Record<string, unknown>).nameJapanese ?? matched.name_japanese,
+        ),
+        type: toKnownOptionalString(matched.type) ?? sakeInfo.type,
+        subtype: toKnownOptionalString(matched.subtype),
+        prefecture: toKnownOptionalString(matched.prefecture),
+        region: toKnownOptionalString(matched.region),
+        description: toKnownOptionalString(matched.description) ?? sakeInfo.description,
+        riceVariety: toKnownOptionalString(
+          (matched as Record<string, unknown>).riceVariety ??
+            (matched as Record<string, unknown>).rice_variety,
+        ),
+        polishingRatio: toOptionalNumber(
+          (matched as Record<string, unknown>).polishingRatio ?? matched.polishing_ratio,
+          0,
+        ),
+        alcoholPercentage: toOptionalNumber(
+          (matched as Record<string, unknown>).alcoholPercentage ??
+            (matched as Record<string, unknown>).alcohol_percentage,
+          0,
+        ),
+      };
+      sakeInfo = {
+        ...mergeSakeEnrichment(sakeInfo, catalogAsScan),
+        // Keep Vision/edge identity for display when catalog is thin; prefer catalog name when present
+        name: catalogAsScan.name || sakeInfo.name,
+        brewery: catalogAsScan.brewery || sakeInfo.brewery,
+        ...qualityFromEdge,
       };
     }
 
-    let rawInfo: RawLabelSakeInfo | null = null;
-    try {
-      const parsed = JSON.parse(content.trim()) as unknown;
-      rawInfo = findLabelInfoInUnknown(parsed);
-    } catch {
-      console.error('Failed to parse OpenAI response:', content);
-      return {
-        success: false,
-        error: 'Failed to parse AI analysis. The image might not be a sake label.'
-      };
-    }
+    const candidates = (payload.candidates ?? [])
+      .map(mapEdgeCandidate)
+      .filter((c): c is ScanCandidate => Boolean(c));
 
-    if (!rawInfo) {
-      return {
-        success: false,
-        error: 'Could not identify sake information. Please make sure the label is clearly visible.'
-      };
-    }
-
-    const normalized = normalizeLabelSakeInfo(rawInfo);
-    const quality = normalized ? getLabelQualityMetrics(normalized) : null;
-    const sakeInfo = normalized
-      ? {
-          ...normalized,
-          ...quality,
-        }
-      : null;
-    if (!sakeInfo) {
-      return {
-        success: false,
-        error: 'Could not identify sake information. Please make sure the label is clearly visible.'
-      };
-    }
-
-    console.log('✅ Successfully analyzed sake:', sakeInfo.name);
+    console.log('✅ Edge scan success:', sakeInfo.name, sakeId ? `(id ${sakeId})` : '(unmatched)');
 
     return {
       success: true,
-      sake: sakeInfo
+      sake: sakeInfo,
+      sakeId,
+      candidates: candidates.length > 0 ? candidates : undefined,
+      ambiguous: Boolean(payload.ambiguous),
     };
-
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error scanning sake label:', error);
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'Failed to analyze label. Please check your internet connection.';
     return {
       success: false,
-      error: error.message || 'Failed to analyze label. Please check your internet connection.'
+      error: message,
     };
   }
 }
@@ -732,7 +983,9 @@ Output must be compact and strictly factual from visible text:
     const normalized = rawItems
       .map((item) => normalizeMenuSakeItem(item))
       .filter((item): item is MenuSakeItem => Boolean(item));
-    const sakes = scoreMenuRecommendations(dedupeMenuSakes(normalized), preferences);
+    const deduped = dedupeMenuSakes(normalized);
+    const grounded = await groundMenuItemsInCatalog(deduped);
+    const sakes = scoreMenuRecommendations(grounded, preferences);
 
     if (sakes.length === 0) {
       return {
@@ -742,7 +995,8 @@ Output must be compact and strictly factual from visible text:
       };
     }
 
-    console.log(`✅ Found ${sakes.length} sake items on menu`);
+    const matchedCount = sakes.filter((s) => s.sakeId).length;
+    console.log(`✅ Found ${sakes.length} sake items on menu (${matchedCount} catalog-matched)`);
 
     return { success: true, sakes };
   } catch (error: any) {

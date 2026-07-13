@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Text, View, Pressable, StyleSheet, Platform, Image } from 'react-native';
+import { Text, View, Pressable, StyleSheet, Platform, Image, Modal, ScrollView } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import Animated, {
@@ -12,19 +12,25 @@ import Animated, {
   interpolate,
   cancelAnimation,
 } from 'react-native-reanimated';
-import { ChevronLeft, Info, Image as ImageIcon, Zap, BookOpen, ScanLine } from 'lucide-react-native';
+import { ChevronLeft, Info, Image as ImageIcon, Zap, BookOpen, ScanLine, SlidersHorizontal } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import { scanSakeLabel, scanSakeMenu, type MenuPreferences } from '@/lib/openai-scan';
-import { scanSakeLabelV2, isWineEngineEnabled } from '@/lib/wine-engine-scan';
 import { useAuth } from '@/lib/auth-context';
 import { useGuestUsageStore } from '@/lib/guest-usage-store';
 import { useUserFavorites, useUserRatings } from '@/lib/supabase-hooks';
 
 type ScanMode = 'label' | 'menu';
+
+const MENU_FLAVOR_OPTIONS = ['Crisp', 'Dry', 'Umami', 'Fruity', 'Floral', 'Rich', 'Sweet', 'Smooth'] as const;
+const BUDGET_OPTIONS: { id: MenuPreferences['budgetBias']; label: string }[] = [
+  { id: 'value', label: 'Value' },
+  { id: 'balanced', label: 'Balanced' },
+  { id: 'premium', label: 'Premium' },
+];
 
 // Height of the scan frame (must match styles.frame height)
 const FRAME_HEIGHT = 380;
@@ -138,16 +144,27 @@ export default function CameraScreen() {
   const [capturedImageUri, setCapturedImageUri] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [scanMode, setScanMode] = useState<ScanMode>('label');
+  const [prefsSheetVisible, setPrefsSheetVisible] = useState(false);
+  const [prefsOverride, setPrefsOverride] = useState<MenuPreferences | null>(null);
+  const [draftFlavors, setDraftFlavors] = useState<string[]>([]);
+  const [draftBudget, setDraftBudget] = useState<MenuPreferences['budgetBias']>('balanced');
   const cameraRef = useRef<CameraView>(null);
   const { isGuest, session } = useAuth();
   const incrementLabelScan = useGuestUsageStore((s) => s.incrementLabelScan);
   const userId = session?.user?.id;
   const { data: userRatings } = useUserRatings(userId);
   const { data: userFavorites } = useUserFavorites(userId);
-  const menuPreferences = useMemo(
+  const inferredMenuPreferences = useMemo(
     () => inferMenuPreferences(userRatings, userFavorites),
     [userFavorites, userRatings]
   );
+  const menuPreferences = prefsOverride ?? inferredMenuPreferences;
+
+  const openMenuPrefsSheet = (seed?: MenuPreferences) => {
+    setDraftFlavors(seed?.preferredFlavors?.length ? [...seed.preferredFlavors] : ['Crisp', 'Dry']);
+    setDraftBudget(seed?.budgetBias ?? 'balanced');
+    setPrefsSheetVisible(true);
+  };
 
   // Reanimated values
   const scanLineY = useSharedValue(0);          // sweeping scan line position (0-1)
@@ -284,7 +301,12 @@ export default function CameraScreen() {
 
           router.replace({
             pathname: '/menu-results',
-            params: { menuData: JSON.stringify(result.sakes) },
+            params: {
+              menuData: JSON.stringify(result.sakes),
+              ...(menuPreferences
+                ? { prefsData: JSON.stringify(menuPreferences) }
+                : {}),
+            },
           });
         } else {
           console.error('❌ Menu scan failed:', result.error);
@@ -292,15 +314,8 @@ export default function CameraScreen() {
           setErrorMessage(result.error || 'Could not read the menu. Try a clearer photo.');
         }
       } else {
-        const useWineEngine = isWineEngineEnabled();
-        console.log(
-          useWineEngine
-            ? '🔍 Starting sake label scan with WineEngine cascade...'
-            : '🔍 Starting sake label scan with OpenAI...',
-        );
-        const result = useWineEngine
-          ? await scanSakeLabelV2(base64Image)
-          : await scanSakeLabel(base64Image);
+        console.log('🔍 Starting sake label scan with OpenAI...');
+        const result = await scanSakeLabel(base64Image);
 
         if (result.success && result.sake) {
           console.log('✅ Successfully scanned:', result.sake.name);
@@ -323,6 +338,10 @@ export default function CameraScreen() {
               sakeData: JSON.stringify(result.sake),
               imageUri: imageUri || '',
               ...(result.sakeId ? { sakeId: result.sakeId } : {}),
+              ...(result.candidates?.length
+                ? { candidates: JSON.stringify(result.candidates) }
+                : {}),
+              ...(result.ambiguous ? { ambiguous: '1' } : {}),
             },
           });
         } else {
@@ -333,6 +352,9 @@ export default function CameraScreen() {
             params: {
               errorMessage: result.error || 'Could not identify this sake label.',
               imageUri: imageUri || '',
+              ...(result.candidates?.length
+                ? { candidates: JSON.stringify(result.candidates) }
+                : {}),
             },
           });
         }
@@ -430,12 +452,16 @@ export default function CameraScreen() {
     if (isScanning) return;
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-    const wantMenu = scanMode === 'label';
-    if (wantMenu && (isGuest || !session?.access_token)) {
-      router.push('/paywall');
+    if (scanMode === 'label') {
+      if (isGuest || !session?.access_token) {
+        router.push('/paywall');
+        return;
+      }
+      setScanMode('menu');
+      openMenuPrefsSheet(prefsOverride ?? inferredMenuPreferences);
       return;
     }
-    setScanMode((prev) => (prev === 'label' ? 'menu' : 'label'));
+    setScanMode('label');
   };
 
   const stageText = getScanStage(scanProgress, scanMode);
@@ -527,6 +553,18 @@ export default function CameraScreen() {
                 Menu
               </Text>
             </Pressable>
+            {scanMode === 'menu' && (
+              <Pressable
+                onPress={async () => {
+                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  openMenuPrefsSheet(menuPreferences);
+                }}
+                style={styles.modeToggleButton}
+              >
+                <SlidersHorizontal size={16} color="#FFFFFF" />
+                <Text style={styles.modeToggleText}>Taste</Text>
+              </Pressable>
+            )}
           </View>
         )}
 
@@ -592,6 +630,12 @@ export default function CameraScreen() {
                   ? 'Point camera at the sake menu'
                   : 'Position label within frame'}
               </Text>
+              {scanMode === 'menu' && menuPreferences?.preferredFlavors?.length ? (
+                <Text style={styles.prefsHintText}>
+                  Prefs: {menuPreferences.preferredFlavors.slice(0, 3).join(' · ')} ·{' '}
+                  {menuPreferences.budgetBias ?? 'balanced'}
+                </Text>
+              ) : null}
             </View>
 
             {/* Bottom Controls — frosted glass */}
@@ -625,6 +669,106 @@ export default function CameraScreen() {
           </>
         )}
       </View>
+
+      <Modal
+        visible={prefsSheetVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPrefsSheetVisible(false)}
+      >
+        <Pressable
+          style={styles.prefsBackdrop}
+          onPress={() => setPrefsSheetVisible(false)}
+        >
+          <Pressable
+            style={[styles.prefsSheet, { paddingBottom: insets.bottom + 20 }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={styles.prefsTitle}>Taste preferences</Text>
+            <Text style={styles.prefsSubtitle}>
+              Override inferred flavors and budget before we score the menu.
+            </Text>
+
+            <Text style={styles.prefsSectionLabel}>Flavors</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ flexGrow: 0, marginBottom: 16 }}
+              contentContainerStyle={{ gap: 8 }}
+            >
+              {MENU_FLAVOR_OPTIONS.map((flavor) => {
+                const selected = draftFlavors.includes(flavor);
+                return (
+                  <Pressable
+                    key={flavor}
+                    onPress={async () => {
+                      await Haptics.selectionAsync();
+                      setDraftFlavors((prev) =>
+                        selected ? prev.filter((f) => f !== flavor) : [...prev, flavor]
+                      );
+                    }}
+                    style={[styles.prefsChip, selected && styles.prefsChipSelected]}
+                  >
+                    <Text style={[styles.prefsChipText, selected && styles.prefsChipTextSelected]}>
+                      {flavor}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            <Text style={styles.prefsSectionLabel}>Budget</Text>
+            <View style={styles.budgetRow}>
+              {BUDGET_OPTIONS.map((opt) => {
+                const selected = draftBudget === opt.id;
+                return (
+                  <Pressable
+                    key={opt.id}
+                    onPress={async () => {
+                      await Haptics.selectionAsync();
+                      setDraftBudget(opt.id);
+                    }}
+                    style={[styles.budgetChip, selected && styles.budgetChipSelected]}
+                  >
+                    <Text
+                      style={[styles.budgetChipText, selected && styles.budgetChipTextSelected]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <View style={styles.prefsActions}>
+              <Pressable
+                onPress={async () => {
+                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setPrefsOverride(null);
+                  setPrefsSheetVisible(false);
+                }}
+                style={styles.prefsSecondaryButton}
+              >
+                <Text style={styles.prefsSecondaryText}>Use inferred</Text>
+              </Pressable>
+              <Pressable
+                onPress={async () => {
+                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  setPrefsOverride({
+                    preferredFlavors:
+                      draftFlavors.length > 0 ? draftFlavors : ['Crisp', 'Dry'],
+                    budgetBias: draftBudget ?? 'balanced',
+                  });
+                  setPrefsSheetVisible(false);
+                }}
+                style={styles.prefsPrimaryButton}
+              >
+                <Text style={styles.prefsPrimaryText}>Apply & scan</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -939,5 +1083,117 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     borderWidth: 2,
     borderColor: '#FFFFFF',
+  },
+  prefsHintText: {
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 12,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  prefsBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  prefsSheet: {
+    backgroundColor: '#1A1A1A',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+  },
+  prefsTitle: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  prefsSubtitle: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 18,
+  },
+  prefsSectionLabel: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginBottom: 10,
+  },
+  prefsChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  prefsChipSelected: {
+    backgroundColor: 'rgba(201, 162, 39, 0.25)',
+    borderColor: '#C9A227',
+  },
+  prefsChipText: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  prefsChipTextSelected: {
+    color: '#C9A227',
+  },
+  budgetRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 22,
+  },
+  budgetChip: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 14,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  budgetChipSelected: {
+    backgroundColor: 'rgba(188, 0, 45, 0.25)',
+    borderColor: '#BC002D',
+  },
+  budgetChipText: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  budgetChipTextSelected: {
+    color: '#FFFFFF',
+  },
+  prefsActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  prefsSecondaryButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 16,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  prefsSecondaryText: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  prefsPrimaryButton: {
+    flex: 1.2,
+    paddingVertical: 14,
+    borderRadius: 16,
+    alignItems: 'center',
+    backgroundColor: '#C9A227',
+  },
+  prefsPrimaryText: {
+    color: '#1A1A1A',
+    fontSize: 14,
+    fontWeight: '800',
   },
 });

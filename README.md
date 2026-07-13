@@ -263,15 +263,12 @@ Sake catalog, images, ratings, and user data are loaded from **Supabase** (`sake
 - `EXPO_PUBLIC_SUPABASE_ANON_KEY` or `EXPO_PUBLIC_SUPABASE_KEY` - Supabase anon/public key (starts with `eyJ...`)
 - `EXPO_PUBLIC_OPENAI_API_KEY` - OpenAI API key for client-side label scan (`openai-scan.ts`; legacy name `EXPO_PUBLIC_VIBECODE_OPENAI_API_KEY` still supported)
 - `EXPO_PUBLIC_BACKEND_URL` - Optional retailer search API base URL (legacy: `EXPO_PUBLIC_VIBECODE_BACKEND_URL`)
-- `EXPO_PUBLIC_WINE_ENGINE_ENABLED` - Optional. Set to `1` to route label scans through the `scan-label-v2` Edge Function (TinEye WineEngine first, OpenAI Vision fallback). Defaults to off so existing OpenAI-only scans keep working.
 
 **Supabase Edge Function Secrets:**
 You need to set these in your Supabase dashboard (Settings → Edge Functions → Manage secrets):
 - `SUPABASE_ANON_KEY` - Your Supabase anon/public key (same as above)
 - `SUPABASE_SERVICE_ROLE_KEY` - Service role key (from Supabase dashboard API settings)
 - `OPENAI_API_KEY` - Your OpenAI API key for GPT-4o Vision
-- `WINEENGINE_USERNAME` - TinEye WineEngine API username for the `sakescan` tenant (required by `scan-label-v2`)
-- `WINEENGINE_PASSWORD` - TinEye WineEngine API password (skip both if using IP-whitelist auth)
 
 **Important: For local testing:**
 1. Go to Supabase Dashboard → Authentication → Settings

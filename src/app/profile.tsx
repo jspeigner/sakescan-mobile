@@ -28,6 +28,7 @@ import { useI18n, LANGUAGE_LABELS, type Language } from '@/lib/i18n-context';
 import { useNotifications } from '@/lib/notification-context';
 import { supabase, resolveSakeImageUrl } from '@/lib/supabase';
 import { useUserScans, useUserRatings, useUpdateUserProfile, useUserProfile } from '@/lib/supabase-hooks';
+import { useFollowCounts, isSocialEnabled } from '@/lib/social-hooks';
 import type { ScanWithSake } from '@/lib/database.types';
 
 export default function ProfileScreen() {
@@ -43,9 +44,12 @@ export default function ProfileScreen() {
 
   // Edit profile state
   const [editDisplayName, setEditDisplayName] = useState('');
+  const [editBio, setEditBio] = useState('');
   const [editAvatarUrl, setEditAvatarUrl] = useState('');
   const [localAvatarUri, setLocalAvatarUri] = useState<string | null>(null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+
+  const { data: followCounts } = useFollowCounts(user?.id);
 
   // Fetch user stats from Supabase
   const { data: scans } = useUserScans(user?.id);
@@ -126,6 +130,7 @@ export default function ProfileScreen() {
 
   const openEditProfile = () => {
     setEditDisplayName(userDisplayName);
+    setEditBio(userProfile?.bio ?? '');
     setEditAvatarUrl(userAvatar ?? '');
     setLocalAvatarUri(null);
     setShowEditProfileModal(true);
@@ -196,6 +201,7 @@ export default function ProfileScreen() {
         userId: user.id,
         displayName: editDisplayName.trim(),
         avatarUrl: editAvatarUrl,
+        bio: editBio.trim(),
       });
 
       setShowEditProfileModal(false);
@@ -355,14 +361,43 @@ export default function ProfileScreen() {
                 <Text className="text-xs text-[#8B8B8B] font-medium">REVIEWED</Text>
               </View>
               <View className="w-px bg-[#F0EDE5]" />
-              <View className="flex-1 items-center">
+              <Pressable
+                className="flex-1 items-center"
+                onPress={() => {
+                  if (!user?.id || !isSocialEnabled()) return;
+                  router.push({
+                    pathname: '/user/follows',
+                    params: { id: user.id, mode: 'following' },
+                  });
+                }}
+              >
                 <View className="flex-row items-center mb-1">
                   <BookOpen size={16} color="#C9A227" />
                 </View>
-                <Text className="text-2xl font-bold text-[#1a1a1a]">0</Text>
+                <Text className="text-2xl font-bold text-[#1a1a1a]">
+                  {isSocialEnabled() ? (followCounts?.following ?? 0) : 0}
+                </Text>
                 <Text className="text-xs text-[#8B8B8B] font-medium">FOLLOWING</Text>
-              </View>
+              </Pressable>
             </View>
+            {isSocialEnabled() && user?.id && !isGuest && (
+              <View className="flex-row mt-4" style={{ gap: 8 }}>
+                <Pressable
+                  onPress={() => router.push(`/user/${user.id}`)}
+                  className="flex-1 py-2.5 rounded-full items-center"
+                  style={{ backgroundColor: '#F0EDE5' }}
+                >
+                  <Text className="text-[#1a1a1a] font-semibold text-sm">View public profile</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => router.push('/notifications')}
+                  className="flex-1 py-2.5 rounded-full items-center"
+                  style={{ backgroundColor: '#F0EDE5' }}
+                >
+                  <Text className="text-[#1a1a1a] font-semibold text-sm">Notifications</Text>
+                </Pressable>
+              </View>
+            )}
           </View>
         </View>
 
@@ -781,6 +816,25 @@ export default function ProfileScreen() {
                   borderWidth: 1,
                   borderColor: colors.border,
                   color: colors.text,
+                }}
+              />
+
+              <Text className="text-sm font-semibold mb-2 tracking-wider" style={{ color: colors.textSecondary }}>BIO</Text>
+              <TextInput
+                value={editBio}
+                onChangeText={setEditBio}
+                placeholder="What sake do you love?"
+                placeholderTextColor={colors.textTertiary}
+                multiline
+                maxLength={200}
+                className="rounded-xl px-4 py-4 text-base mb-4"
+                style={{
+                  backgroundColor: colors.surface,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  color: colors.text,
+                  minHeight: 80,
+                  textAlignVertical: 'top',
                 }}
               />
 

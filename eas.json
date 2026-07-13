@@ -19,9 +19,6 @@
     },
     "production": {
       "autoIncrement": true,
-      "env": {
-        "EXPO_PUBLIC_WINE_ENGINE_ENABLED": "1"
-      },
       "ios": {
         "distribution": "store",
         "image": "latest"

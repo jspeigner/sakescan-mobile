@@ -1,9 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Text,
   View,
   ScrollView,
   Pressable,
+  Modal,
+  Share,
 } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -27,11 +29,17 @@ import {
   Minus,
   BookOpen,
   Sparkles,
+  Search,
+  X,
+  Share2,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/lib/theme-context';
-import type { MenuSakeItem } from '@/lib/openai-scan';
+import { useAuth } from '@/lib/auth-context';
+import { useCreateMenuScan } from '@/lib/supabase-hooks';
+import { buildMenuTopPicksShareMessage } from '@/lib/share-sake';
+import type { MenuPreferences, MenuSakeItem } from '@/lib/openai-scan';
 
 function parsePriceValue(price?: string): number | null {
   if (!price) return null;
@@ -97,11 +105,13 @@ function SakeMenuCard({
   index,
   priceCategory,
   colors,
+  onPress,
 }: {
   item: MenuSakeItem;
   index: number;
   priceCategory: 'low' | 'mid' | 'high' | null;
   colors: ReturnType<typeof useTheme>['colors'];
+  onPress: (item: MenuSakeItem) => void;
 }) {
   const priceIcon =
     priceCategory === 'low' ? (
@@ -137,6 +147,7 @@ function SakeMenuCard({
       <Pressable
         onPress={async () => {
           await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          onPress(item);
         }}
         style={{
           backgroundColor: colors.surface,
@@ -147,7 +158,6 @@ function SakeMenuCard({
           borderColor: colors.borderLight,
         }}
       >
-        {/* Header: name + price */}
         <View
           style={{
             flexDirection: 'row',
@@ -158,27 +168,41 @@ function SakeMenuCard({
           }}
         >
           <View style={{ flex: 1, marginRight: 12 }}>
-            {item.recommendationTier && (
-              <View
-                style={{
-                  alignSelf: 'flex-start',
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 4,
-                  paddingHorizontal: 8,
-                  paddingVertical: 4,
-                  borderRadius: 10,
-                  backgroundColor: `${recommendationColor}20`,
-                  marginBottom: 8,
-                }}
-              >
-                <Sparkles size={12} color={recommendationColor} />
-                <Text style={{ fontSize: 11, fontWeight: '700', color: recommendationColor }}>
-                  {item.recommendationTier}
-                  {item.recommendationScore != null ? ` • ${item.recommendationScore}` : ''}
-                </Text>
-              </View>
-            )}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+              {item.recommendationTier && (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4,
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    borderRadius: 10,
+                    backgroundColor: `${recommendationColor}20`,
+                  }}
+                >
+                  <Sparkles size={12} color={recommendationColor} />
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: recommendationColor }}>
+                    {item.recommendationTier}
+                    {item.recommendationScore != null ? ` • ${item.recommendationScore}` : ''}
+                  </Text>
+                </View>
+              )}
+              {item.valueChip && (
+                <View
+                  style={{
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    borderRadius: 10,
+                    backgroundColor: 'rgba(188, 0, 45, 0.1)',
+                  }}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: colors.brandRed }}>
+                    {item.valueChip}
+                  </Text>
+                </View>
+              )}
+            </View>
             <Text
               style={{
                 fontFamily: 'NotoSerifJP_600SemiBold',
@@ -200,6 +224,15 @@ function SakeMenuCard({
                 {item.brewery}
               </Text>
             )}
+            {item.sakeId ? (
+              <Text style={{ fontSize: 12, color: colors.primary, marginTop: 6, fontWeight: '600' }}>
+                In catalog · tap for details
+              </Text>
+            ) : (
+              <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 6 }}>
+                Not matched · tap for tasting notes
+              </Text>
+            )}
           </View>
 
           {item.price && (
@@ -215,9 +248,7 @@ function SakeMenuCard({
                 {item.price}
               </Text>
               {item.size && (
-                <Text
-                  style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}
-                >
+                <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>
                   {item.size}
                 </Text>
               )}
@@ -249,7 +280,6 @@ function SakeMenuCard({
           )}
         </View>
 
-        {/* Type + specs row */}
         <View
           style={{
             flexDirection: 'row',
@@ -273,6 +303,11 @@ function SakeMenuCard({
               </Text>
             </View>
           )}
+          {item.averageRating != null && (
+            <Text style={{ fontSize: 12, color: colors.textTertiary }}>
+              {item.averageRating.toFixed(1)}★
+            </Text>
+          )}
           {item.alcoholPercentage != null && (
             <Text style={{ fontSize: 12, color: colors.textTertiary }}>
               {item.alcoholPercentage}% ABV
@@ -285,7 +320,6 @@ function SakeMenuCard({
           )}
         </View>
 
-        {/* Flavor chips */}
         {item.flavorProfile && item.flavorProfile.length > 0 && (
           <View
             style={{
@@ -315,7 +349,6 @@ function SakeMenuCard({
           </View>
         )}
 
-        {/* Serving temps */}
         {item.servingTemperature && item.servingTemperature.length > 0 && (
           <View
             style={{
@@ -332,12 +365,7 @@ function SakeMenuCard({
         )}
 
         {item.recommendationReasons && item.recommendationReasons.length > 0 && (
-          <View
-            style={{
-              paddingHorizontal: 20,
-              paddingBottom: 14,
-            }}
-          >
+          <View style={{ paddingHorizontal: 20, paddingBottom: 14 }}>
             {item.recommendationReasons.slice(0, 2).map((reason, idx) => (
               <Text
                 key={`${reason}-${idx}`}
@@ -353,8 +381,7 @@ function SakeMenuCard({
           </View>
         )}
 
-        {/* Description */}
-        {item.description && (
+        {(item.tastingNotes || item.description) && (
           <View
             style={{
               paddingHorizontal: 20,
@@ -370,8 +397,9 @@ function SakeMenuCard({
                 lineHeight: 21,
                 color: colors.textSecondary,
               }}
+              numberOfLines={3}
             >
-              {item.description}
+              {item.tastingNotes ?? item.description}
             </Text>
           </View>
         )}
@@ -383,7 +411,12 @@ function SakeMenuCard({
 export default function MenuResultsScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
-  const params = useLocalSearchParams<{ menuData: string }>();
+  const { session, isGuest } = useAuth();
+  const createMenuScan = useCreateMenuScan();
+  const params = useLocalSearchParams<{ menuData: string; prefsData?: string }>();
+  const savedRef = useRef(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [selectedUnmatched, setSelectedUnmatched] = useState<MenuSakeItem | null>(null);
 
   const headerOpacity = useSharedValue(0);
   const countScale = useSharedValue(0.6);
@@ -399,18 +432,80 @@ export default function MenuResultsScreen() {
     opacity: countScale.value,
   }));
 
-  let sakes: MenuSakeItem[] = [];
-  try {
-    sakes = params.menuData ? JSON.parse(params.menuData) : [];
-  } catch {
-    sakes = [];
-  }
+  const sakes: MenuSakeItem[] = useMemo(() => {
+    try {
+      return params.menuData ? JSON.parse(params.menuData) : [];
+    } catch {
+      return [];
+    }
+  }, [params.menuData]);
+
+  const prefs: MenuPreferences | undefined = useMemo(() => {
+    try {
+      return params.prefsData ? JSON.parse(params.prefsData) : undefined;
+    } catch {
+      return undefined;
+    }
+  }, [params.prefsData]);
+
+  useEffect(() => {
+    if (savedRef.current || sakes.length === 0) return;
+    const userId = session?.user?.id;
+    if (!userId || isGuest || !session?.access_token) return;
+
+    savedRef.current = true;
+    setSaveStatus('saving');
+    createMenuScan
+      .mutateAsync({
+        userId,
+        preferredFlavors: prefs?.preferredFlavors,
+        budgetBias: prefs?.budgetBias,
+        items: sakes,
+      })
+      .then(() => setSaveStatus('saved'))
+      .catch((err) => {
+        console.warn('Menu scan save failed:', err);
+        savedRef.current = false;
+        setSaveStatus('error');
+      });
+  }, [createMenuScan, isGuest, prefs, sakes, session?.access_token, session?.user?.id]);
 
   const priceValues = sakes.map((s) => parsePriceValue(s.price));
   const rankedSakes = [...sakes].sort(
     (a, b) => (b.recommendationScore ?? 0) - (a.recommendationScore ?? 0)
   );
   const topPicks = rankedSakes.filter((item) => item.recommendationTier === 'Top Pick').slice(0, 3);
+  const matchedCount = sakes.filter((s) => s.sakeId).length;
+
+  const handleCardPress = (item: MenuSakeItem) => {
+    if (item.sakeId) {
+      router.push(`/sake/${item.sakeId}`);
+      return;
+    }
+    setSelectedUnmatched(item);
+  };
+
+  const handleShareTopPicks = async () => {
+    const picks = topPicks.length > 0 ? topPicks : rankedSakes.slice(0, 3);
+    if (picks.length === 0) return;
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      await Share.share({
+        message: buildMenuTopPicksShareMessage(
+          picks.map((p) => ({
+            name: p.name,
+            price: p.price,
+            type: p.type,
+            tastingNotes: p.tastingNotes,
+            valueChip: p.valueChip,
+          })),
+        ),
+        title: 'My SakeScan menu picks',
+      });
+    } catch {
+      // User cancelled or share failed
+    }
+  };
 
   if (sakes.length === 0) {
     return (
@@ -481,7 +576,6 @@ export default function MenuResultsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      {/* Fixed header */}
       <Animated.View
         style={[
           {
@@ -523,9 +617,33 @@ export default function MenuResultsScreen() {
             >
               Menu Results
             </Text>
+            {saveStatus === 'saved' && (
+              <Text style={{ fontSize: 11, color: colors.textTertiary, marginTop: 2 }}>
+                Saved to your account
+              </Text>
+            )}
+            {saveStatus === 'saving' && (
+              <Text style={{ fontSize: 11, color: colors.textTertiary, marginTop: 2 }}>
+                Saving menu…
+              </Text>
+            )}
           </View>
 
-          <View style={{ width: 40 }} />
+          <View style={{ width: 40, alignItems: 'center' }}>
+            <Pressable
+              onPress={handleShareTopPicks}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                backgroundColor: colors.surfaceSecondary,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Share2 size={18} color={colors.text} />
+            </Pressable>
+          </View>
         </View>
       </Animated.View>
 
@@ -534,7 +652,6 @@ export default function MenuResultsScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: insets.bottom + 24 }}
       >
-        {/* Summary banner */}
         <Animated.View style={countStyle}>
           <LinearGradient
             colors={[`${colors.brandRed}15`, `${colors.primary}10`, colors.surfaceSecondary]}
@@ -572,19 +689,17 @@ export default function MenuResultsScreen() {
                   </Text>
                 </View>
 
-                {priceRange && (
-                  <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
-                    {priceRange.currency}
-                    {priceRange.min} – {priceRange.currency}
-                    {priceRange.max}
-                  </Text>
-                )}
+                <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
+                  {matchedCount} linked to catalog
+                  {priceRange
+                    ? ` · ${priceRange.currency}${priceRange.min} – ${priceRange.currency}${priceRange.max}`
+                    : ''}
+                </Text>
               </View>
 
               <BookOpen size={36} color={colors.primary} strokeWidth={1.2} />
             </View>
 
-            {/* Type breakdown pills */}
             {Object.keys(typeBreakdown).length > 1 && (
               <View
                 style={{
@@ -636,24 +751,180 @@ export default function MenuResultsScreen() {
               Top picks for your taste and budget
             </Text>
             {topPicks.map((item, idx) => (
-              <Text key={`${item.name}-top-${idx}`} style={{ fontSize: 13, color: colors.textSecondary, lineHeight: 19 }}>
-                {idx + 1}. {item.name} {item.price ? `(${item.price})` : ''} {item.recommendationScore != null ? `- score ${item.recommendationScore}` : ''}
-              </Text>
+              <Pressable
+                key={`${item.name}-top-${idx}`}
+                onPress={() => handleCardPress(item)}
+                style={{ paddingVertical: 4 }}
+              >
+                <Text style={{ fontSize: 13, color: colors.textSecondary, lineHeight: 19 }}>
+                  {idx + 1}. {item.name} {item.price ? `(${item.price})` : ''}
+                  {item.valueChip ? ` · ${item.valueChip}` : ''}
+                </Text>
+              </Pressable>
             ))}
+            <Pressable
+              onPress={handleShareTopPicks}
+              style={{
+                marginTop: 10,
+                alignSelf: 'flex-start',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                borderRadius: 20,
+                backgroundColor: colors.surfaceSecondary,
+              }}
+            >
+              <Share2 size={14} color={colors.primary} />
+              <Text style={{ fontSize: 13, fontWeight: '600', color: colors.primary }}>
+                Share my top picks
+              </Text>
+            </Pressable>
           </View>
         )}
 
-        {/* Sake cards */}
         {rankedSakes.map((item, index) => (
           <SakeMenuCard
-            key={`${item.name}-${index}`}
+            key={`${item.name}-${item.price ?? ''}-${index}`}
             item={item}
             index={index}
             priceCategory={getPriceCategory(parsePriceValue(item.price), priceValues)}
             colors={colors}
+            onPress={handleCardPress}
           />
         ))}
       </ScrollView>
+
+      <Modal
+        visible={selectedUnmatched != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedUnmatched(null)}
+      >
+        <Pressable
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.45)',
+            justifyContent: 'flex-end',
+          }}
+          onPress={() => setSelectedUnmatched(null)}
+        >
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: colors.surface,
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              paddingHorizontal: 20,
+              paddingTop: 16,
+              paddingBottom: insets.bottom + 20,
+            }}
+          >
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: 12,
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: 'NotoSerifJP_600SemiBold',
+                  fontSize: 20,
+                  color: colors.text,
+                  flex: 1,
+                  marginRight: 12,
+                }}
+              >
+                {selectedUnmatched?.name}
+              </Text>
+              <Pressable
+                onPress={() => setSelectedUnmatched(null)}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  backgroundColor: colors.surfaceSecondary,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <X size={18} color={colors.text} />
+              </Pressable>
+            </View>
+
+            <Text style={{ fontSize: 14, color: colors.textSecondary, marginBottom: 12 }}>
+              Not in the SakeScan catalog yet. Here’s what we could read from the menu.
+            </Text>
+
+            {selectedUnmatched?.brewery ? (
+              <Text style={{ fontSize: 14, color: colors.text, marginBottom: 6 }}>
+                Brewery: {selectedUnmatched.brewery}
+              </Text>
+            ) : null}
+            {selectedUnmatched?.type ? (
+              <Text style={{ fontSize: 14, color: colors.text, marginBottom: 6 }}>
+                Type: {selectedUnmatched.type}
+              </Text>
+            ) : null}
+            {selectedUnmatched?.price ? (
+              <Text style={{ fontSize: 14, color: colors.text, marginBottom: 6 }}>
+                Price: {selectedUnmatched.price}
+                {selectedUnmatched.size ? ` (${selectedUnmatched.size})` : ''}
+              </Text>
+            ) : null}
+            {selectedUnmatched?.tastingNotes || selectedUnmatched?.description ? (
+              <Text
+                style={{
+                  fontSize: 14,
+                  color: colors.textSecondary,
+                  lineHeight: 21,
+                  marginTop: 8,
+                  marginBottom: 16,
+                }}
+              >
+                {selectedUnmatched.tastingNotes ?? selectedUnmatched.description}
+              </Text>
+            ) : (
+              <Text
+                style={{
+                  fontSize: 14,
+                  color: colors.textTertiary,
+                  marginTop: 8,
+                  marginBottom: 16,
+                }}
+              >
+                No tasting notes available for this unmatched item.
+              </Text>
+            )}
+
+            <Pressable
+              onPress={async () => {
+                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                const q = selectedUnmatched?.name ?? '';
+                setSelectedUnmatched(null);
+                router.push({ pathname: '/search-results', params: { query: q } });
+              }}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                backgroundColor: colors.primary,
+                borderRadius: 16,
+                paddingVertical: 14,
+              }}
+            >
+              <Search size={18} color="#FFFFFF" />
+              <Text style={{ fontSize: 15, fontWeight: '700', color: '#FFFFFF' }}>
+                Search catalog
+              </Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }

@@ -37,14 +37,30 @@ import {
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { useSake, useSakeRatings, useIsFavorite, useToggleFavorite } from '@/lib/supabase-hooks';
+import { useSake, useSakeRatings, useIsFavorite, useToggleFavorite, useMenuPricesForSake } from '@/lib/supabase-hooks';
 import { useAuth } from '@/lib/auth-context';
 import { resolveSakeImageUrl } from '@/lib/supabase';
 import { useTheme } from '@/lib/theme-context';
 import { getUserLocation } from '@/lib/location';
+import { buildSakeShareMessage } from '@/lib/share-sake';
+import { resolveSakeTastingFields } from '@/lib/sake-catalog';
+import { findTypeExplainer } from '@/lib/sake-learn';
 import type { RatingWithUser } from '@/lib/database.types';
 
 type ServingTemp = 'Chilled' | 'Room' | 'Warm';
+const REVIEWS_PAGE_SIZE = 5;
+
+function formatMenuSeenDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  } catch {
+    return '';
+  }
+}
 
 export default function SakeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -54,6 +70,7 @@ export default function SakeDetailScreen() {
   const [selectedServing, setSelectedServing] = useState<ServingTemp | null>(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
+  const [visibleReviewCount, setVisibleReviewCount] = useState(REVIEWS_PAGE_SIZE);
 
   // Fetch from Supabase only
   const { data: supabaseSake, isLoading, isError, refetch } = useSake(id);
@@ -64,6 +81,8 @@ export default function SakeDetailScreen() {
 
   // Ratings/Reviews
   const { data: reviews } = useSakeRatings(id);
+  const myReview = reviews?.find((r) => r.user_id === user?.id);
+  const { data: menuPrices } = useMenuPricesForSake(id);
 
   // Entrance animations — must be declared before any early returns (Rules of Hooks)
   const heroOpacity = useSharedValue(0);
@@ -137,23 +156,8 @@ export default function SakeDetailScreen() {
     );
   }
 
-  // Parse the rich description to extract embedded metadata
-  const rawDesc = supabaseSake.description ?? '';
-  const descParts = rawDesc.split(/\n\n\*\*/);
-  const mainDescription = descParts[0]?.trim() || 'No description available.';
-
-  const extractField = (label: string): string | null => {
-    const part = descParts.find((p) => p.startsWith(`${label}:**`));
-    return part ? part.replace(`${label}:** `, '').trim() : null;
-  };
-
-  const tastingNotes = extractField('Tasting Notes');
-  const foodPairingsRaw = extractField('Food Pairings');
-  const foodPairings = foodPairingsRaw ? foodPairingsRaw.split(', ').filter(Boolean) : [];
-  const flavorProfileRaw = extractField('Flavor Profile');
-  const flavorProfile = flavorProfileRaw ? flavorProfileRaw.split(', ').filter(Boolean) : [];
-  const servingTempsRaw = extractField('Serving Temperature');
-  const servingTemps = servingTempsRaw ? servingTempsRaw.split(', ').filter(Boolean) : [];
+  const tasting = resolveSakeTastingFields(supabaseSake);
+  const typeExplainer = findTypeExplainer(supabaseSake.type);
 
   const sake = {
     id: supabaseSake.id,
@@ -161,7 +165,7 @@ export default function SakeDetailScreen() {
     nameJapanese: supabaseSake.name_japanese,
     sakeType: supabaseSake.type ?? 'Other',
     subtype: supabaseSake.subtype,
-    description: mainDescription,
+    description: tasting.mainDescription || 'No description available.',
     avgRating: supabaseSake.average_rating ?? 0,
     reviewCount: supabaseSake.total_ratings ?? 0,
     labelImageUrl: resolveSakeImageUrl(supabaseSake.image_url) ?? null,
@@ -170,10 +174,10 @@ export default function SakeDetailScreen() {
     riceType: supabaseSake.rice_variety ?? 'N/A',
     smv: supabaseSake.smv,
     acidity: supabaseSake.acidity,
-    tastingNotes,
-    foodPairings,
-    flavorProfile,
-    servingTemps,
+    tastingNotes: tasting.tastingNotes,
+    foodPairings: tasting.foodPairings,
+    flavorProfile: tasting.flavorProfile,
+    servingTemps: tasting.servingTemperature,
   };
 
   const brewery = {
@@ -191,7 +195,14 @@ export default function SakeDetailScreen() {
     toggleFavorite.mutate({ userId: user.id, sakeId: id, isFavorite: !!isFavorite });
   };
 
-  const shareMessage = `Check out ${sake.name} by ${brewery.name} on SakeScan — https://sakescan.com`;
+  const shareMessage = buildSakeShareMessage({
+    name: sake.name,
+    tastingLine:
+      sake.tastingNotes?.trim() ||
+      sake.flavorProfile.slice(0, 3).join(', ') ||
+      `${brewery.name}${sake.sakeType ? ` · ${sake.sakeType}` : ''}`,
+    sakeId: sake.id,
+  });
 
   const handleShare = async () => {
     setShowMoreMenu(false);
@@ -204,6 +215,29 @@ export default function SakeDetailScreen() {
     } catch {
       // User cancelled or share failed
     }
+  };
+
+  const handleRate = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (isGuest || !user?.id) {
+      router.push('/welcome');
+      return;
+    }
+    router.push({
+      pathname: '/review',
+      params: {
+        id: sake.id,
+        name: sake.name,
+        type: sake.sakeType,
+        ...(myReview
+          ? {
+              ratingId: myReview.id,
+              existingRating: String(myReview.rating),
+              existingReview: myReview.review_text ?? '',
+            }
+          : {}),
+      },
+    });
   };
 
   const handleServingPress = async (temp: ServingTemp) => {
@@ -329,9 +363,22 @@ export default function SakeDetailScreen() {
 
           {/* Type badge row */}
           <View className="flex-row items-center gap-2 mb-4">
-            <View className="px-3 py-1 rounded-full" style={{ backgroundColor: colors.primary }}>
-              <Text className="text-xs font-bold text-white">{sake.sakeType}</Text>
-            </View>
+            <Pressable
+              onPress={async () => {
+                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push({
+                  pathname: '/sake-learn',
+                  params: { type: sake.sakeType },
+                });
+              }}
+              className="px-3 py-1 rounded-full"
+              style={{ backgroundColor: colors.primary }}
+            >
+              <Text className="text-xs font-bold text-white">
+                {sake.sakeType}
+                {typeExplainer ? ' · Learn' : ''}
+              </Text>
+            </Pressable>
             {sake.subtype && (
               <View className="px-3 py-1 rounded-full" style={{ backgroundColor: colors.surfaceSecondary }}>
                 <Text className="text-xs font-semibold" style={{ color: colors.textSecondary }}>{sake.subtype}</Text>
@@ -340,7 +387,12 @@ export default function SakeDetailScreen() {
           </View>
 
           {/* Rating */}
-          <View className="flex-row items-center mb-6">
+          <Pressable
+            onPress={handleRate}
+            className="flex-row items-center mb-6"
+            accessibilityRole="button"
+            accessibilityLabel="Rate and review this sake"
+          >
             {[1, 2, 3, 4, 5].map((star) => (
               <Star
                 key={star}
@@ -354,9 +406,9 @@ export default function SakeDetailScreen() {
               {sake.avgRating.toFixed(1)}
             </Text>
             <Text className="font-medium ml-3 text-base" style={{ color: colors.primary }}>
-              Review ({formatReviewCount(sake.reviewCount)})
+              Rate / Review ({formatReviewCount(sake.reviewCount)})
             </Text>
-          </View>
+          </Pressable>
 
           {/* Specs Cards */}
           <View className="flex-row flex-wrap mb-6" style={{ gap: 12 }}>
@@ -504,53 +556,151 @@ export default function SakeDetailScreen() {
             </View>
           )}
 
-          {/* Reviews Section */}
-          {reviews && reviews.length > 0 && (
-            <View className="mb-8">
+          {/* Seen on menus */}
+          {menuPrices && menuPrices.length > 0 && (
+            <View className="mb-6">
               <Text className="text-xs font-medium mb-3 uppercase tracking-wide" style={{ color: colors.textSecondary }}>
-                Reviews
+                Seen on Menus
               </Text>
-              {(reviews as RatingWithUser[]).slice(0, 5).map((r) => (
+              {menuPrices.map((sighting, idx) => (
                 <View
-                  key={r.id}
-                  className="mb-4 p-4 rounded-2xl"
-                  style={{ backgroundColor: colors.surface }}
+                  key={`menu-price-${idx}-${sighting.seen_at}`}
+                  className="flex-row items-center justify-between mb-2 py-2"
+                  style={{
+                    borderBottomWidth: idx < menuPrices.length - 1 ? StyleSheet.hairlineWidth : 0,
+                    borderBottomColor: colors.border,
+                  }}
                 >
-                  <View className="flex-row items-center justify-between mb-2">
-                    <View className="flex-row items-center">
-                      {r.users?.avatar_url ? (
-                        <Image
-                          source={{ uri: r.users.avatar_url }}
-                          style={{ width: 32, height: 32, borderRadius: 16 }}
-                        />
-                      ) : (
-                        <View
-                          className="w-8 h-8 rounded-full items-center justify-center"
-                          style={{ backgroundColor: colors.border }}
-                        >
-                          <UserIcon size={16} color={colors.textSecondary} />
-                        </View>
-                      )}
-                      <Text className="font-medium ml-2" style={{ color: colors.text }}>
-                        {r.users?.display_name ?? 'Anonymous'}
-                      </Text>
-                    </View>
-                    <View className="flex-row items-center">
-                      <Star size={14} fill={colors.primary} color={colors.primary} />
-                      <Text className="ml-1 text-sm font-medium" style={{ color: colors.text }}>
-                        {r.rating}
-                      </Text>
-                    </View>
-                  </View>
-                  {r.review_text && (
-                    <Text className="text-sm leading-5" style={{ color: colors.textSecondary }}>
-                      {r.review_text}
+                  <View className="flex-1 mr-3">
+                    <Text className="text-base font-semibold" style={{ color: colors.text }}>
+                      {sighting.price}
+                      {sighting.size ? (
+                        <Text className="text-sm font-normal" style={{ color: colors.textSecondary }}>
+                          {` · ${sighting.size}`}
+                        </Text>
+                      ) : null}
                     </Text>
-                  )}
+                    <Text className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>
+                      {[sighting.city, formatMenuSeenDate(sighting.seen_at)].filter(Boolean).join(' · ')}
+                    </Text>
+                  </View>
                 </View>
               ))}
             </View>
           )}
+
+          {/* Find nearby stores */}
+          <Pressable
+            onPress={handleWhereToBuy}
+            disabled={isLoadingLocation}
+            className="mb-8 flex-row items-center justify-between rounded-2xl px-4 py-4"
+            style={{ backgroundColor: colors.surfaceSecondary }}
+            accessibilityRole="button"
+            accessibilityLabel="Find nearby stores"
+          >
+            <View className="flex-row items-center flex-1 mr-3">
+              {isLoadingLocation ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <ShoppingBag size={20} color={colors.primary} />
+              )}
+              <View className="ml-3 flex-1">
+                <Text className="text-base font-semibold" style={{ color: colors.text }}>
+                  Find nearby stores
+                </Text>
+                <Text className="text-xs mt-0.5" style={{ color: colors.textSecondary }}>
+                  Retailers that may carry this bottle
+                </Text>
+              </View>
+            </View>
+            <ChevronLeft
+              size={18}
+              color={colors.textTertiary}
+              style={{ transform: [{ rotate: '180deg' }] }}
+            />
+          </Pressable>
+
+          {/* Reviews Section */}
+          <View className="mb-8">
+            <View className="flex-row items-center justify-between mb-3">
+              <Text className="text-xs font-medium uppercase tracking-wide" style={{ color: colors.textSecondary }}>
+                Reviews
+              </Text>
+              <Pressable onPress={handleRate} hitSlop={8}>
+                <Text className="text-sm font-semibold" style={{ color: colors.primary }}>
+                  {myReview ? 'Edit Your Review' : 'Write a Review'}
+                </Text>
+              </Pressable>
+            </View>
+            {reviews && reviews.length > 0 ? (
+              <>
+                {(reviews as RatingWithUser[]).slice(0, visibleReviewCount).map((r) => (
+                  <View
+                    key={r.id}
+                    className="mb-4 p-4 rounded-2xl"
+                    style={{ backgroundColor: colors.surface }}
+                  >
+                    <View className="flex-row items-center justify-between mb-2">
+                      <View className="flex-row items-center">
+                        {r.users?.avatar_url ? (
+                          <Image
+                            source={{ uri: r.users.avatar_url }}
+                            style={{ width: 32, height: 32, borderRadius: 16 }}
+                          />
+                        ) : (
+                          <View
+                            className="w-8 h-8 rounded-full items-center justify-center"
+                            style={{ backgroundColor: colors.border }}
+                          >
+                            <UserIcon size={16} color={colors.textSecondary} />
+                          </View>
+                        )}
+                        <Text className="font-medium ml-2" style={{ color: colors.text }}>
+                          {r.users?.display_name ?? 'Anonymous'}
+                          {r.user_id === user?.id ? ' (You)' : ''}
+                        </Text>
+                      </View>
+                      <View className="flex-row items-center">
+                        <Star size={14} fill={colors.primary} color={colors.primary} />
+                        <Text className="ml-1 text-sm font-medium" style={{ color: colors.text }}>
+                          {r.rating}
+                        </Text>
+                      </View>
+                    </View>
+                    {r.review_text && (
+                      <Text className="text-sm leading-5" style={{ color: colors.textSecondary }}>
+                        {r.review_text}
+                      </Text>
+                    )}
+                    {r.user_id === user?.id && (
+                      <Pressable onPress={handleRate} hitSlop={8} className="mt-2 self-start">
+                        <Text className="text-xs font-semibold" style={{ color: colors.primary }}>
+                          Edit
+                        </Text>
+                      </Pressable>
+                    )}
+                  </View>
+                ))}
+                {reviews.length > visibleReviewCount && (
+                  <Pressable
+                    onPress={async () => {
+                      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setVisibleReviewCount((n) => n + REVIEWS_PAGE_SIZE);
+                    }}
+                    className="py-3 items-center"
+                  >
+                    <Text className="text-sm font-semibold" style={{ color: colors.primary }}>
+                      Show more reviews ({reviews.length - visibleReviewCount} more)
+                    </Text>
+                  </Pressable>
+                )}
+              </>
+            ) : (
+              <Text className="text-sm" style={{ color: colors.textSecondary }}>
+                No reviews yet. Be the first to rate this sake.
+              </Text>
+            )}
+          </View>
         </Animated.View>
       </ScrollView>
 

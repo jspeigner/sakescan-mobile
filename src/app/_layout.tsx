@@ -143,6 +143,14 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
           options={{ headerShown: false, animation: 'slide_from_right' }}
         />
         <Stack.Screen
+          name="sake-learn"
+          options={{
+            headerShown: false,
+            presentation: 'modal',
+            animation: 'slide_from_bottom',
+          }}
+        />
+        <Stack.Screen
           name="paywall"
           options={{
             headerShown: false,
@@ -152,6 +160,30 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
         />
         <Stack.Screen
           name="unmatched-scan"
+          options={{ headerShown: false, animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="user/[id]"
+          options={{ headerShown: false, animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="user/follows"
+          options={{ headerShown: false, animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="feed"
+          options={{ headerShown: false, animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="activity/[id]"
+          options={{
+            headerShown: false,
+            presentation: 'modal',
+            animation: 'slide_from_bottom',
+          }}
+        />
+        <Stack.Screen
+          name="notifications"
           options={{ headerShown: false, animation: 'slide_from_right' }}
         />
       </Stack>
@@ -263,6 +295,20 @@ export default function RootLayout() {
     };
 
     const handleUrl = async (url: string) => {
+      // Path-based deep links: sakescan://user/{id}, sakescan://sake/{id}
+      const pathMatch = url.match(/sakescan:\/\/(user|sake)\/([^/?#]+)/i);
+      if (pathMatch) {
+        const [, kind, id] = pathMatch;
+        if (kind === 'user' && id) {
+          router.push(`/user/${id}`);
+          return;
+        }
+        if (kind === 'sake' && id) {
+          router.push(`/sake/${id}`);
+          return;
+        }
+      }
+
       const fragmentIndex = url.indexOf('#');
       const queryIndex = url.indexOf('?');
 

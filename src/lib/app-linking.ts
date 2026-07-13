@@ -31,3 +31,13 @@ export function getOAuthRedirectUri(): string {
 export function getAuthEmailRedirectUri(): string {
   return Linking.createURL('auth/callback');
 }
+
+/** Deep link to a public user profile. */
+export function getUserDeepLink(userId: string): string {
+  return `${getAppUrlScheme()}://user/${userId}`;
+}
+
+/** Deep link to a sake detail screen. */
+export function getSakeDeepLink(sakeId: string): string {
+  return `${getAppUrlScheme()}://sake/${sakeId}`;
+}

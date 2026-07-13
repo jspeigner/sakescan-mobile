@@ -9,17 +9,26 @@ import Animated, {
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { Camera, Search, AlertCircle, ChevronLeft } from 'lucide-react-native';
+import { Camera, Search, AlertCircle, ChevronLeft, Plus } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/lib/theme-context';
+import type { ScanCandidate } from '@/lib/openai-scan';
 
 interface UnmatchedScanScreenProps {
   errorMessage?: string;
   imageUri?: string;
+  /** Prefill Vision extract JSON for "Add this sake". */
+  sakeData?: string;
+  candidates?: ScanCandidate[];
 }
 
-export default function UnmatchedScanScreen({ errorMessage, imageUri }: UnmatchedScanScreenProps) {
+export default function UnmatchedScanScreen({
+  errorMessage,
+  imageUri,
+  sakeData,
+  candidates = [],
+}: UnmatchedScanScreenProps) {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
 
@@ -42,9 +51,36 @@ export default function UnmatchedScanScreen({ errorMessage, imageUri }: Unmatche
     transform: [{ translateY: buttonsY.value }],
   }));
 
+  let prefillName = '';
+  try {
+    if (sakeData) {
+      const parsed = JSON.parse(sakeData) as { name?: string };
+      prefillName = typeof parsed.name === 'string' ? parsed.name : '';
+    }
+  } catch {
+    prefillName = '';
+  }
+
+  const handleAddPrefill = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (sakeData) {
+      router.replace({
+        pathname: '/scan-result',
+        params: {
+          sakeData,
+          imageUri: imageUri || '',
+        },
+      });
+      return;
+    }
+    router.replace({
+      pathname: '/search-results',
+      params: prefillName ? { query: prefillName } : {},
+    });
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      {/* Header */}
       <View
         style={{
           flexDirection: 'row',
@@ -73,8 +109,7 @@ export default function UnmatchedScanScreen({ errorMessage, imageUri }: Unmatche
       </View>
 
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
-        {/* Captured image thumbnail */}
-        {imageUri && (
+        {imageUri ? (
           <Animated.View style={iconStyle}>
             <View
               style={{
@@ -109,9 +144,9 @@ export default function UnmatchedScanScreen({ errorMessage, imageUri }: Unmatche
               </LinearGradient>
             </View>
           </Animated.View>
-        )}
+        ) : null}
 
-        {!imageUri && (
+        {!imageUri ? (
           <Animated.View style={iconStyle}>
             <LinearGradient
               colors={[`${colors.brandRed}20`, `${colors.primary}15`, 'transparent']}
@@ -127,7 +162,7 @@ export default function UnmatchedScanScreen({ errorMessage, imageUri }: Unmatche
               <AlertCircle size={48} color={colors.brandRed} strokeWidth={1.5} />
             </LinearGradient>
           </Animated.View>
-        )}
+        ) : null}
 
         <Animated.View style={[{ alignItems: 'center' }, contentStyle]}>
           <Text
@@ -164,9 +199,56 @@ export default function UnmatchedScanScreen({ errorMessage, imageUri }: Unmatche
             Try scanning from a different angle, or search for the sake by name.
           </Text>
         </Animated.View>
+
+        {candidates.length > 0 ? (
+          <Animated.View style={[{ width: '100%', marginTop: 24 }, contentStyle]}>
+            <Text
+              style={{
+                fontSize: 12,
+                fontWeight: '700',
+                color: colors.textTertiary,
+                textTransform: 'uppercase',
+                letterSpacing: 0.6,
+                marginBottom: 10,
+              }}
+            >
+              Did you mean?
+            </Text>
+            {candidates.slice(0, 3).map((candidate) => (
+              <Pressable
+                key={candidate.id}
+                onPress={async () => {
+                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  router.replace({
+                    pathname: '/scan-result',
+                    params: {
+                      sakeId: candidate.id,
+                      imageUri: imageUri || '',
+                      ...(sakeData ? { sakeData } : {}),
+                    },
+                  });
+                }}
+                style={{
+                  backgroundColor: colors.surfaceSecondary,
+                  borderRadius: 16,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                  marginBottom: 8,
+                }}
+              >
+                <Text style={{ color: colors.text, fontSize: 15, fontWeight: '600' }}>
+                  {candidate.name}
+                </Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 13, marginTop: 2 }}>
+                  {candidate.brewery}
+                  {candidate.type ? ` • ${candidate.type}` : ''}
+                </Text>
+              </Pressable>
+            ))}
+          </Animated.View>
+        ) : null}
       </View>
 
-      {/* Action buttons */}
       <Animated.View style={[{ paddingHorizontal: 28, paddingBottom: insets.bottom + 24 }, buttonsStyle]}>
         <Pressable
           onPress={async () => {
@@ -192,7 +274,10 @@ export default function UnmatchedScanScreen({ errorMessage, imageUri }: Unmatche
         <Pressable
           onPress={async () => {
             await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.replace('/search-results');
+            router.replace({
+              pathname: '/search-results',
+              params: prefillName ? { query: prefillName } : {},
+            });
           }}
           style={{
             backgroundColor: colors.surfaceSecondary,
@@ -210,6 +295,27 @@ export default function UnmatchedScanScreen({ errorMessage, imageUri }: Unmatche
             Search by Name
           </Text>
         </Pressable>
+
+        {sakeData ? (
+          <Pressable
+            onPress={handleAddPrefill}
+            style={{
+              backgroundColor: colors.surfaceSecondary,
+              paddingVertical: 16,
+              borderRadius: 24,
+              alignItems: 'center',
+              flexDirection: 'row',
+              justifyContent: 'center',
+              gap: 8,
+              marginTop: 12,
+            }}
+          >
+            <Plus size={18} color={colors.text} />
+            <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600' }}>
+              Add this sake
+            </Text>
+          </Pressable>
+        ) : null}
       </Animated.View>
     </View>
   );

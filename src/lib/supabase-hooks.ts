@@ -12,6 +12,7 @@ import type {
   ScanLabelResponse,
   FavoriteWithSake,
   BreweryCatalogRow,
+  MenuPriceSighting,
 } from './database.types';
 
 // ============ SAKE QUERIES ============
@@ -210,10 +211,19 @@ export function useCreateRating() {
       if (error) throw error;
       return data as Rating;
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['ratings', 'sake', variables.sakeId] });
       queryClient.invalidateQueries({ queryKey: ['ratings', 'user', variables.userId] });
       queryClient.invalidateQueries({ queryKey: ['sake', variables.sakeId] });
+      void import('./social-hooks').then(({ emitActivityEvent }) =>
+        emitActivityEvent({
+          actorId: variables.userId,
+          type: 'rating',
+          sakeId: variables.sakeId,
+          ratingId: data.id,
+          meta: { rating: variables.rating },
+        }),
+      );
     },
   });
 }
@@ -262,7 +272,9 @@ export function useAllScans(options?: { limit?: number }) {
             brewery,
             type,
             image_url,
-            average_rating
+            average_rating,
+            tasting_notes,
+            flavor_tags
           )
         `)
         .eq('matched', true)
@@ -391,31 +403,40 @@ export function useCreateSake() {
             params.name.toLowerCase().includes(row.name?.toLowerCase() ?? ''),
         ) ?? existingRows?.[0];
 
+      const structuredFields = {
+        flavor_tags: params.flavorProfile?.filter(Boolean) ?? [],
+        tasting_notes: params.tastingNotes?.trim() || null,
+        food_pairings: params.foodPairings?.filter(Boolean) ?? [],
+        serving_temps: params.servingTemperature?.filter(Boolean) ?? [],
+      };
+
       if (existing) {
         console.log('Sake already exists, returning existing ID:', existing.id);
+        const patch: Record<string, unknown> = {};
+        if (structuredFields.tasting_notes) patch.tasting_notes = structuredFields.tasting_notes;
+        if (structuredFields.flavor_tags.length > 0) patch.flavor_tags = structuredFields.flavor_tags;
+        if (structuredFields.food_pairings.length > 0) patch.food_pairings = structuredFields.food_pairings;
+        if (structuredFields.serving_temps.length > 0) patch.serving_temps = structuredFields.serving_temps;
         // If the existing record has no image and we have one, upload & patch it
         if (!existing.image_url && params.imageUrl) {
           try {
             const storagePath = await uploadLabelImage(params.imageUrl, existing.id);
             if (storagePath) {
-              await supabase.from('sake').update({ image_url: storagePath } as Record<string, unknown>).eq('id', existing.id);
+              patch.image_url = storagePath;
               console.log('📸 Patched missing image_url on existing sake');
             }
           } catch (uploadErr) {
             console.warn('⚠️ Could not upload label image for existing sake:', uploadErr);
           }
         }
+        if (Object.keys(patch).length > 0) {
+          await supabase.from('sake').update(patch).eq('id', existing.id);
+        }
         return { id: existing.id, isNew: false };
       }
 
-      // Build a rich description that includes all OpenAI extracted data
-      const richDescription = buildRichDescription({
-        description: params.description,
-        tastingNotes: params.tastingNotes,
-        foodPairings: params.foodPairings,
-        flavorProfile: params.flavorProfile,
-        servingTemperature: params.servingTemperature,
-      });
+      // Keep description as narrative prose; structured columns hold tasting metadata
+      const mainDescription = params.description?.trim() || null;
 
       // Create new sake with all available data
       const { data, error } = await supabase
@@ -428,7 +449,8 @@ export function useCreateSake() {
           subtype: params.subtype ?? null,
           prefecture: params.prefecture ?? null,
           region: params.region ?? null,
-          description: richDescription,
+          description: mainDescription,
+          ...structuredFields,
           rice_variety: params.riceVariety ?? null,
           polishing_ratio: params.polishingRatio ?? null,
           alcohol_percentage: params.alcoholPercentage ?? null,
@@ -460,44 +482,6 @@ export function useCreateSake() {
   });
 }
 
-// Helper function to build rich description with all OpenAI data
-function buildRichDescription(data: {
-  description?: string;
-  tastingNotes?: string;
-  foodPairings?: string[];
-  flavorProfile?: string[];
-  servingTemperature?: string[];
-}) {
-  const parts: string[] = [];
-
-  // Main description
-  if (data.description) {
-    parts.push(data.description);
-  }
-
-  // Tasting notes
-  if (data.tastingNotes) {
-    parts.push(`\n\n**Tasting Notes:** ${data.tastingNotes}`);
-  }
-
-  // Flavor profile
-  if (data.flavorProfile && data.flavorProfile.length > 0) {
-    parts.push(`\n\n**Flavor Profile:** ${data.flavorProfile.join(', ')}`);
-  }
-
-  // Food pairings
-  if (data.foodPairings && data.foodPairings.length > 0) {
-    parts.push(`\n\n**Food Pairings:** ${data.foodPairings.join(', ')}`);
-  }
-
-  // Serving temperature
-  if (data.servingTemperature && data.servingTemperature.length > 0) {
-    parts.push(`\n\n**Serving Temperature:** ${data.servingTemperature.join(', ')}`);
-  }
-
-  return parts.join('') || null;
-}
-
 export function useCreateScan() {
   const queryClient = useQueryClient();
 
@@ -523,9 +507,122 @@ export function useCreateScan() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['scans'] });
+      void import('./social-hooks').then(({ emitActivityEvent }) =>
+        emitActivityEvent({
+          actorId: variables.userId,
+          type: 'scan',
+          sakeId: variables.sakeId,
+          scanId: (data as { id?: string })?.id,
+        }),
+      );
     },
+  });
+}
+
+export function useCreateMenuScan() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (params: {
+      userId: string;
+      preferredFlavors?: string[];
+      budgetBias?: string;
+      city?: string | null;
+      items: Array<{
+        sakeId?: string;
+        name: string;
+        nameJapanese?: string;
+        brewery?: string;
+        type?: string;
+        price?: string;
+        size?: string;
+        description?: string;
+        tastingNotes?: string;
+        flavorProfile?: string[];
+        averageRating?: number;
+        recommendationScore?: number;
+        recommendationTier?: string;
+        recommendationReasons?: string[];
+        valueLabel?: string;
+        valueChip?: string;
+      }>;
+    }) => {
+      const { data: scan, error: scanError } = await supabase
+        .from('menu_scans')
+        .insert({
+          user_id: params.userId,
+          preferred_flavors: params.preferredFlavors ?? [],
+          budget_bias: params.budgetBias ?? null,
+          city: params.city ?? null,
+          item_count: params.items.length,
+        } as Record<string, unknown>)
+        .select()
+        .single();
+
+      if (scanError) throw scanError;
+
+      const rows = params.items.map((item, index) => ({
+        menu_scan_id: scan.id,
+        sake_id: item.sakeId ?? null,
+        name: item.name,
+        name_japanese: item.nameJapanese ?? null,
+        brewery: item.brewery ?? null,
+        type: item.type ?? null,
+        price: item.price ?? null,
+        size: item.size ?? null,
+        description: item.description ?? null,
+        tasting_notes: item.tastingNotes ?? null,
+        flavor_profile: item.flavorProfile ?? [],
+        average_rating: item.averageRating ?? null,
+        recommendation_score: item.recommendationScore ?? null,
+        recommendation_tier: item.recommendationTier ?? null,
+        recommendation_reasons: item.recommendationReasons ?? [],
+        value_label: item.valueLabel ?? null,
+        value_chip: item.valueChip ?? null,
+        sort_order: index,
+      }));
+
+      const { error: itemsError } = await supabase
+        .from('menu_scan_items')
+        .insert(rows as Record<string, unknown>[]);
+
+      if (itemsError) throw itemsError;
+      return scan;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['menu_scans'] });
+      const sakeIds = [
+        ...new Set(
+          variables.items
+            .map((item) => item.sakeId)
+            .filter((sakeId): sakeId is string => !!sakeId)
+        ),
+      ];
+      for (const sakeId of sakeIds) {
+        queryClient.invalidateQueries({ queryKey: ['menu_prices', sakeId] });
+      }
+    },
+  });
+}
+
+/** Recent menu prices for a catalog sake (Phase 4 “Seen on menus”). */
+export function useMenuPricesForSake(sakeId: string | undefined, limit = 8) {
+  return useQuery({
+    queryKey: ['menu_prices', sakeId, limit],
+    queryFn: async () => {
+      if (!sakeId) return [] as MenuPriceSighting[];
+
+      const { data, error } = await supabase.rpc('get_menu_prices_for_sake', {
+        p_sake_id: sakeId,
+        p_limit: limit,
+      });
+
+      if (error) throw error;
+      return (data ?? []) as MenuPriceSighting[];
+    },
+    enabled: !!sakeId,
   });
 }
 
@@ -554,15 +651,24 @@ export function useUpdateUserProfile() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (params: { userId: string; displayName?: string; avatarUrl?: string; location?: string }) => {
+    mutationFn: async (params: {
+      userId: string;
+      displayName?: string;
+      avatarUrl?: string;
+      location?: string;
+      bio?: string;
+    }) => {
+      const updates: Record<string, unknown> = {
+        updated_at: new Date().toISOString(),
+      };
+      if (params.displayName !== undefined) updates.display_name = params.displayName;
+      if (params.avatarUrl !== undefined) updates.avatar_url = params.avatarUrl;
+      if (params.location !== undefined) updates.location = params.location;
+      if (params.bio !== undefined) updates.bio = params.bio;
+
       const { data, error } = await supabase
         .from('users')
-        .update({
-          display_name: params.displayName ?? null,
-          avatar_url: params.avatarUrl ?? null,
-          location: params.location ?? null,
-          updated_at: new Date().toISOString(),
-        } as Record<string, unknown>)
+        .update(updates)
         .eq('id', params.userId)
         .select()
         .single();
@@ -572,6 +678,7 @@ export function useUpdateUserProfile() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['user', variables.userId] });
+      queryClient.invalidateQueries({ queryKey: ['social', 'profile', variables.userId] });
     },
   });
 }
@@ -654,9 +761,18 @@ export function useToggleFavorite() {
         return { added: true };
       }
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (result, variables) => {
       queryClient.invalidateQueries({ queryKey: ['favorites', 'user', variables.userId] });
       queryClient.invalidateQueries({ queryKey: ['favorites', 'check', variables.userId, variables.sakeId] });
+      if (result.added) {
+        void import('./social-hooks').then(({ emitActivityEvent }) =>
+          emitActivityEvent({
+            actorId: variables.userId,
+            type: 'favorite',
+            sakeId: variables.sakeId,
+          }),
+        );
+      }
     },
   });
 }

@@ -5,16 +5,37 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { Star } from 'lucide-react-native';
 import { useAuth } from '@/lib/auth-context';
-import { useCreateRating } from '@/lib/supabase-hooks';
+import { useCreateRating, useUpdateRating } from '@/lib/supabase-hooks';
 
 export default function ReviewModal() {
   const insets = useSafeAreaInsets();
-  const { id, name, type } = useLocalSearchParams<{ id: string; name: string; type: string }>();
-  const [rating, setRating] = useState(0);
-  const [review, setReview] = useState('');
+  const {
+    id,
+    name,
+    type,
+    ratingId,
+    existingRating,
+    existingReview,
+  } = useLocalSearchParams<{
+    id: string;
+    name: string;
+    type: string;
+    ratingId?: string;
+    existingRating?: string;
+    existingReview?: string;
+  }>();
+
+  const parsedExisting = existingRating ? Number(existingRating) : 0;
+  const [rating, setRating] = useState(
+    Number.isFinite(parsedExisting) && parsedExisting > 0 ? parsedExisting : 0,
+  );
+  const [review, setReview] = useState(existingReview ?? '');
 
   const { user, isGuest } = useAuth();
   const createRating = useCreateRating();
+  const updateRating = useUpdateRating();
+  const isEditing = Boolean(ratingId);
+  const isPending = createRating.isPending || updateRating.isPending;
 
   const sakeName = name ?? 'Sake';
   const sakeType = type ?? '';
@@ -40,12 +61,22 @@ export default function ReviewModal() {
     }
 
     try {
-      await createRating.mutateAsync({
-        userId: user.id,
-        sakeId: id,
-        rating,
-        reviewText: review.trim() || undefined,
-      });
+      if (isEditing && ratingId) {
+        await updateRating.mutateAsync({
+          ratingId,
+          rating,
+          reviewText: review.trim() || undefined,
+          sakeId: id,
+          userId: user.id,
+        });
+      } else {
+        await createRating.mutateAsync({
+          userId: user.id,
+          sakeId: id,
+          rating,
+          reviewText: review.trim() || undefined,
+        });
+      }
 
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
@@ -80,7 +111,7 @@ export default function ReviewModal() {
               className="text-[#1a1a1a] mb-6"
               style={{ fontFamily: 'NotoSerifJP_600SemiBold', fontSize: 24, fontWeight: '600' }}
             >
-              Rate {sakeName} {sakeType}
+              {isEditing ? 'Edit review' : 'Rate'} {sakeName} {sakeType}
             </Text>
 
             {/* Guest Warning */}
@@ -157,20 +188,20 @@ export default function ReviewModal() {
 
             <Pressable
               onPress={handleSubmit}
-              disabled={rating === 0 || createRating.isPending}
+              disabled={rating === 0 || isPending}
               className="flex-1 ml-3 items-center justify-center py-4 rounded-full"
               style={{
                 backgroundColor: rating > 0 ? '#1a1a1a' : '#D4D4D4',
               }}
             >
-              {createRating.isPending ? (
+              {isPending ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
                 <Text
                   className="text-base font-semibold"
                   style={{ color: rating > 0 ? '#FFFFFF' : '#8B8B8B' }}
                 >
-                  Submit Review
+                  {isEditing ? 'Save Changes' : 'Submit Review'}
                 </Text>
               )}
             </Pressable>

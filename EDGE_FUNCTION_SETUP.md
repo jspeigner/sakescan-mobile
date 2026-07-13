@@ -22,8 +22,6 @@ EXPO_PUBLIC_SUPABASE_KEY=eyJhbGc... (your anon key)
 - [ ] `OPENAI_API_KEY` - Your OpenAI API key
 - [ ] `SUPABASE_SERVICE_ROLE_KEY` - From Supabase Dashboard → Settings → API
 - [ ] `SUPABASE_ANON_KEY` - Same as EXPO_PUBLIC_SUPABASE_KEY above
-- [ ] `WINEENGINE_USERNAME` - TinEye WineEngine API username for the `sakescan` tenant (only needed if you deploy `scan-label-v2`)
-- [ ] `WINEENGINE_PASSWORD` - TinEye WineEngine API password (skip both if using IP whitelist auth instead)
 
 ### 3. Deploy Edge Function
 
@@ -31,39 +29,16 @@ EXPO_PUBLIC_SUPABASE_KEY=eyJhbGc... (your anon key)
 # Link to your project (if not already linked)
 supabase link --project-ref qpsdebikkmcdzddhphlk
 
-# Deploy the scan-label function (legacy OpenAI-only)
+# Deploy the scan-label function
 supabase functions deploy scan-label
-
-# Deploy the scan-label-v2 function (WineEngine cascade with OpenAI fallback)
-supabase functions deploy scan-label-v2
 
 # Set the environment variables (replace with your actual values)
 supabase secrets set OPENAI_API_KEY=sk-proj-YOUR_KEY_HERE
 supabase secrets set SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVICE_ROLE_KEY
 supabase secrets set SUPABASE_ANON_KEY=YOUR_ANON_KEY
-
-# WineEngine credentials (only needed for scan-label-v2; skip if you set up IP whitelist instead)
-supabase secrets set WINEENGINE_USERNAME=YOUR_TINEYE_USERNAME
-supabase secrets set WINEENGINE_PASSWORD=YOUR_TINEYE_PASSWORD
 ```
 
-### Enabling the WineEngine cascade in the app
-
-`scan-label-v2` is opt-in via an env flag so the existing OpenAI-only scan path stays unaffected.
-
-In your `.env`:
-
-```env
-EXPO_PUBLIC_WINE_ENGINE_ENABLED=1
-```
-
-When this flag is set, the camera label scan calls `scan-label-v2` which:
-
-1. Sends the image to `https://wineengine.tineye.com/sakescan/rest/search/?limit=1` via HTTP Basic auth
-2. If the top match scores `>= 25` and `match_percent >= 40`, uses the OCR text to fuzzy-match a row in `public.sake` and enriches missing fields (`region`, `prefecture`, `name_japanese`)
-3. Otherwise falls back to OpenAI Vision (gpt-4o) and runs the same DB lookup
-
-Every scan is logged to `public.scan_experiments` (provider used, scores, latencies, matched sake id) so the cascade can be tuned over time. Run the migration `supabase/migrations/20260508120000_scan_experiments.sql` before deploying.
+Label scanning in the app uses client-side OpenAI Vision (`src/lib/openai-scan.ts`) with `EXPO_PUBLIC_OPENAI_API_KEY` / `EXPO_PUBLIC_VIBECODE_OPENAI_API_KEY`. Menu scan uses the same OpenAI path.
 
 ### 4. Verify Deployment
 
