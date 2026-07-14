@@ -37,7 +37,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/lib/theme-context';
 import { useAuth } from '@/lib/auth-context';
-import { useCreateMenuScan } from '@/lib/supabase-hooks';
+import { useCreateMenuScan, useMenuScanQuota } from '@/lib/supabase-hooks';
+import { useSubscription } from '@/lib/subscription-context';
+import { FREE_MENU_SCANS_PER_MONTH } from '@/lib/purchases';
 import { buildMenuTopPicksShareMessage } from '@/lib/share-sake';
 import type { MenuPreferences, MenuSakeItem } from '@/lib/openai-scan';
 
@@ -412,6 +414,8 @@ export default function MenuResultsScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const { session, isGuest } = useAuth();
+  const { isPro } = useSubscription();
+  const { data: menuQuota } = useMenuScanQuota(session?.user?.id, !isGuest && !!session?.user?.id);
   const createMenuScan = useCreateMenuScan();
   const params = useLocalSearchParams<{ menuData: string; prefsData?: string }>();
   const savedRef = useRef(false);
@@ -645,6 +649,27 @@ export default function MenuResultsScreen() {
             </Pressable>
           </View>
         </View>
+
+        {!isGuest && !isPro && (
+          <Pressable
+            onPress={() => router.push('/paywall')}
+            style={{
+              marginTop: 12,
+              paddingVertical: 10,
+              paddingHorizontal: 14,
+              borderRadius: 12,
+              backgroundColor: '#C9A22718',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <Text style={{ color: '#C9A227', fontSize: 13, fontWeight: '600', flex: 1 }}>
+              Menu scans this month: {menuQuota?.used ?? 0}/
+              {menuQuota?.limit ?? FREE_MENU_SCANS_PER_MONTH} — Upgrade for unlimited
+            </Text>
+          </Pressable>
+        )}
       </Animated.View>
 
       <ScrollView

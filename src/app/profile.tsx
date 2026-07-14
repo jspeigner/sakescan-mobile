@@ -14,7 +14,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { User, LogOut, Trash2, ChevronRight, Star, Camera, BookOpen, X, CheckCircle, AlertCircle, Clock, Bell, Moon, Mail, Edit3, Shield, Languages } from 'lucide-react-native';
+import { User, LogOut, Trash2, ChevronRight, Star, Camera, BookOpen, X, CheckCircle, AlertCircle, Clock, Bell, Moon, Mail, Edit3, Shield, Languages, Sparkles } from 'lucide-react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,8 +27,10 @@ import { useTheme } from '@/lib/theme-context';
 import { useI18n, LANGUAGE_LABELS, type Language } from '@/lib/i18n-context';
 import { useNotifications } from '@/lib/notification-context';
 import { supabase, resolveSakeImageUrl } from '@/lib/supabase';
-import { useUserScans, useUserRatings, useUpdateUserProfile, useUserProfile } from '@/lib/supabase-hooks';
+import { useUserScans, useUserRatings, useUpdateUserProfile, useUserProfile, useMenuScanQuota } from '@/lib/supabase-hooks';
 import { useFollowCounts, isSocialEnabled } from '@/lib/social-hooks';
+import { useSubscription } from '@/lib/subscription-context';
+import { FREE_MENU_SCANS_PER_MONTH } from '@/lib/purchases';
 import type { ScanWithSake } from '@/lib/database.types';
 
 export default function ProfileScreen() {
@@ -50,6 +52,8 @@ export default function ProfileScreen() {
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   const { data: followCounts } = useFollowCounts(user?.id);
+  const { isPro, restore } = useSubscription();
+  const { data: menuQuota } = useMenuScanQuota(user?.id, !isGuest && !!user?.id);
 
   // Fetch user stats from Supabase
   const { data: scans } = useUserScans(user?.id);
@@ -508,6 +512,64 @@ export default function ProfileScreen() {
                 </Text>
               </Pressable>
             )}
+          </View>
+        )}
+
+        {/* SakeScan Pro */}
+        {!isGuest && user && (
+          <View className="mx-5 mb-6">
+            <Text className="text-sm font-semibold text-[#8B8B8B] tracking-wider mb-3">
+              SAKESCAN PRO
+            </Text>
+            <View
+              className="rounded-2xl overflow-hidden"
+              style={{ backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#F0EDE5' }}
+            >
+              <Pressable
+                onPress={async () => {
+                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  if (!isPro) router.push('/paywall');
+                }}
+                className="flex-row items-center p-4"
+                style={{ borderBottomWidth: 1, borderBottomColor: '#F0EDE5' }}
+              >
+                <View
+                  className="w-10 h-10 rounded-full items-center justify-center"
+                  style={{ backgroundColor: '#C9A22722' }}
+                >
+                  <Sparkles size={20} color="#C9A227" />
+                </View>
+                <View className="flex-1 ml-3">
+                  <Text className="text-[#1a1a1a] text-base font-medium">
+                    {isPro ? 'Pro Active' : 'Upgrade to Pro'}
+                  </Text>
+                  <Text className="text-[#8B8B8B] text-xs mt-0.5">
+                    {isPro
+                      ? 'Unlimited menu scans, pairings, and collection'
+                      : `Menu scans this month: ${menuQuota?.used ?? 0}/${menuQuota?.limit ?? FREE_MENU_SCANS_PER_MONTH}`}
+                  </Text>
+                </View>
+                {!isPro && <ChevronRight size={18} color="#8B8B8B" />}
+              </Pressable>
+              <Pressable
+                onPress={async () => {
+                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  const result = await restore();
+                  if (result.error) {
+                    Alert.alert('Restore failed', result.error);
+                  } else if (result.isPro) {
+                    Alert.alert('Restored', 'SakeScan Pro is active on this account.');
+                  } else {
+                    Alert.alert('No purchases found', 'No active Pro subscription was found.');
+                  }
+                }}
+                className="flex-row items-center p-4"
+              >
+                <View className="flex-1 ml-13 pl-13" style={{ marginLeft: 52 }}>
+                  <Text className="text-[#1a1a1a] text-base font-medium">Restore Purchases</Text>
+                </View>
+              </Pressable>
+            </View>
           </View>
         )}
 

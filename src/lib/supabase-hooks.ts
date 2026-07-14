@@ -593,6 +593,7 @@ export function useCreateMenuScan() {
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['menu_scans'] });
+      queryClient.invalidateQueries({ queryKey: ['menuScanQuota', variables.userId] });
       const sakeIds = [
         ...new Set(
           variables.items
@@ -774,5 +775,31 @@ export function useToggleFavorite() {
         );
       }
     },
+  });
+}
+
+// ============ MENU SCAN QUOTA (Free tier) ============
+
+export function useMenuScanQuota(userId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ['menuScanQuota', userId],
+    queryFn: async () => {
+      if (!userId) {
+        return { used: 0, limit: 3, monthStart: null as string | null };
+      }
+      const { data, error } = await supabase.rpc('get_menu_scan_quota');
+      if (error) throw error;
+      const row = (Array.isArray(data) ? data[0] : data) as
+        | { used?: number | string; limit_count?: number; month_start?: string }
+        | null
+        | undefined;
+      return {
+        used: Number(row?.used ?? 0),
+        limit: Number(row?.limit_count ?? 3),
+        monthStart: row?.month_start ?? null,
+      };
+    },
+    enabled: !!userId && enabled,
+    staleTime: 30_000,
   });
 }

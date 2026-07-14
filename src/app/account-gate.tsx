@@ -1,0 +1,236 @@
+import { useEffect } from 'react';
+import { Text, View, Pressable } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withDelay,
+  withSpring,
+  Easing,
+} from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
+import { router } from 'expo-router';
+import {
+  BookOpen,
+  ScanLine,
+  Bookmark,
+  Sparkles,
+  ChevronLeft,
+  Check,
+} from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
+import { useTheme } from '@/lib/theme-context';
+
+const FEATURES = [
+  {
+    icon: BookOpen,
+    label: 'Menu Scanner',
+    desc: 'Scan izakaya and restaurant menus with a free account (3 scans/month)',
+  },
+  {
+    icon: Bookmark,
+    label: 'Saved Menus',
+    desc: 'Keep past menu scans so you can revisit picks and prices later',
+  },
+  {
+    icon: Sparkles,
+    label: 'Richer Recommendations',
+    desc: 'Taste-matched top picks with clearer value and pairing reasons',
+  },
+  {
+    icon: ScanLine,
+    label: 'Unlimited Label Scans',
+    desc: 'No limits on individual bottle label scanning once signed in',
+  },
+];
+
+/** Guest → free account gate (not the paid Pro paywall). */
+export default function AccountGateScreen() {
+  const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+
+  const headerY = useSharedValue(-20);
+  const headerOpacity = useSharedValue(0);
+  const featuresOpacity = useSharedValue(0);
+  const ctaScale = useSharedValue(0.9);
+  const ctaOpacity = useSharedValue(0);
+
+  useEffect(() => {
+    headerY.value = withTiming(0, { duration: 400, easing: Easing.out(Easing.cubic) });
+    headerOpacity.value = withTiming(1, { duration: 400 });
+    featuresOpacity.value = withDelay(250, withTiming(1, { duration: 400 }));
+    ctaScale.value = withDelay(500, withSpring(1, { damping: 14, stiffness: 120 }));
+    ctaOpacity.value = withDelay(500, withTiming(1, { duration: 300 }));
+  }, [headerY, headerOpacity, featuresOpacity, ctaScale, ctaOpacity]);
+
+  const headerStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: headerY.value }],
+    opacity: headerOpacity.value,
+  }));
+  const featuresStyle = useAnimatedStyle(() => ({ opacity: featuresOpacity.value }));
+  const ctaStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: ctaScale.value }],
+    opacity: ctaOpacity.value,
+  }));
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <View style={{ position: 'absolute', top: insets.top + 8, left: 16, zIndex: 10 }}>
+        <Pressable
+          onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.back();
+          }}
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 20,
+            backgroundColor: colors.surfaceSecondary,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <ChevronLeft size={22} color={colors.text} />
+        </Pressable>
+      </View>
+
+      <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 28, paddingTop: insets.top + 60 }}>
+        <Animated.View style={[{ alignItems: 'center', marginBottom: 40 }, headerStyle]}>
+          <LinearGradient
+            colors={[`${colors.brandRed}30`, `${colors.primary}20`, 'transparent']}
+            style={{
+              width: 100,
+              height: 100,
+              borderRadius: 50,
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: 24,
+            }}
+          >
+            <Sparkles size={44} color={colors.brandRed} strokeWidth={1.5} />
+          </LinearGradient>
+
+          <Text
+            style={{
+              width: '100%',
+              fontFamily: 'NotoSerifJP_700Bold',
+              fontSize: 28,
+              color: colors.text,
+              textAlign: 'center',
+              marginBottom: 8,
+            }}
+            adjustsFontSizeToFit
+            minimumFontScale={0.78}
+            maxFontSizeMultiplier={1.35}
+            numberOfLines={2}
+          >
+            Create a Free Account
+          </Text>
+          <Text
+            style={{
+              fontSize: 16,
+              color: colors.textSecondary,
+              textAlign: 'center',
+              lineHeight: 24,
+            }}
+          >
+            Unlock the menu scanner, saved picks,{'\n'}and unlimited label scans.
+          </Text>
+        </Animated.View>
+
+        <Animated.View style={[{ marginBottom: 40 }, featuresStyle]}>
+          {FEATURES.map((f, i) => {
+            const Icon = f.icon;
+            return (
+              <View
+                key={f.label}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'flex-start',
+                  marginBottom: i < FEATURES.length - 1 ? 20 : 0,
+                }}
+              >
+                <View
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 14,
+                    backgroundColor: `${colors.primary}15`,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginRight: 14,
+                  }}
+                >
+                  <Icon size={22} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text
+                      style={{
+                        flexShrink: 1,
+                        fontSize: 16,
+                        fontWeight: '700',
+                        color: colors.text,
+                      }}
+                      numberOfLines={2}
+                    >
+                      {f.label}
+                    </Text>
+                    <Check size={14} color={colors.primary} strokeWidth={3} />
+                  </View>
+                  <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2, lineHeight: 19 }}>
+                    {f.desc}
+                  </Text>
+                </View>
+              </View>
+            );
+          })}
+        </Animated.View>
+      </View>
+
+      <Animated.View
+        style={[{ paddingHorizontal: 28, paddingBottom: insets.bottom + 24 }, ctaStyle]}
+      >
+        <Pressable
+          onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            router.replace('/welcome');
+          }}
+          style={{
+            backgroundColor: colors.brandRed,
+            paddingVertical: 18,
+            borderRadius: 28,
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: '#FFFFFF', fontSize: 17, fontWeight: '700' }}>
+            Create Free Account
+          </Text>
+        </Pressable>
+
+        <Pressable
+          onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push('/auth');
+          }}
+          style={{ paddingVertical: 14, alignItems: 'center', marginTop: 12 }}
+        >
+          <Text style={{ color: colors.primary, fontSize: 15, fontWeight: '600' }}>
+            Already have an account? Sign In
+          </Text>
+        </Pressable>
+
+        <Pressable
+          onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.back();
+          }}
+          style={{ paddingVertical: 10, alignItems: 'center', marginTop: 4 }}
+        >
+          <Text style={{ color: colors.textTertiary, fontSize: 14 }}>Maybe Later</Text>
+        </Pressable>
+      </Animated.View>
+    </View>
+  );
+}

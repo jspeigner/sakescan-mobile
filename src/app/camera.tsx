@@ -21,7 +21,9 @@ import * as FileSystem from 'expo-file-system';
 import { scanSakeLabel, scanSakeMenu, type MenuPreferences } from '@/lib/openai-scan';
 import { useAuth } from '@/lib/auth-context';
 import { useGuestUsageStore } from '@/lib/guest-usage-store';
-import { useUserFavorites, useUserRatings } from '@/lib/supabase-hooks';
+import { useUserFavorites, useUserRatings, useMenuScanQuota } from '@/lib/supabase-hooks';
+import { useSubscription } from '@/lib/subscription-context';
+import { FREE_MENU_SCANS_PER_MONTH } from '@/lib/purchases';
 
 type ScanMode = 'label' | 'menu';
 
@@ -149,7 +151,9 @@ export default function CameraScreen() {
   const [draftFlavors, setDraftFlavors] = useState<string[]>([]);
   const [draftBudget, setDraftBudget] = useState<MenuPreferences['budgetBias']>('balanced');
   const cameraRef = useRef<CameraView>(null);
-  const { isGuest, session } = useAuth();
+  const { isGuest, session, user } = useAuth();
+  const { isPro } = useSubscription();
+  const { data: menuQuota } = useMenuScanQuota(user?.id, !isGuest && !!user?.id);
   const incrementLabelScan = useGuestUsageStore((s) => s.incrementLabelScan);
   const userId = session?.user?.id;
   const { data: userRatings } = useUserRatings(userId);
@@ -285,6 +289,20 @@ export default function CameraScreen() {
 
     try {
       if (scanMode === 'menu') {
+        if (isGuest || !session?.access_token) {
+          setIsScanning(false);
+          setCapturedImageUri(null);
+          router.push('/account-gate');
+          return;
+        }
+        const used = menuQuota?.used ?? 0;
+        const limit = menuQuota?.limit ?? FREE_MENU_SCANS_PER_MONTH;
+        if (!isPro && used >= limit) {
+          setIsScanning(false);
+          setCapturedImageUri(null);
+          router.push('/paywall');
+          return;
+        }
         console.log('📋 Starting sake menu scan with OpenAI...');
         const result = await scanSakeMenu(base64Image, menuPreferences);
 
@@ -448,12 +466,18 @@ export default function CameraScreen() {
     setFlashOn(!flashOn);
   };
 
-  const toggleScanMode = async () => {
-    if (isScanning) return;
+  const selectScanMode = async (next: ScanMode) => {
+    if (isScanning || next === scanMode) return;
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-    if (scanMode === 'label') {
+    if (next === 'menu') {
       if (isGuest || !session?.access_token) {
+        router.push('/account-gate');
+        return;
+      }
+      const used = menuQuota?.used ?? 0;
+      const limit = menuQuota?.limit ?? FREE_MENU_SCANS_PER_MONTH;
+      if (!isPro && used >= limit) {
         router.push('/paywall');
         return;
       }
@@ -520,7 +544,7 @@ export default function CameraScreen() {
         {!isScanning && (
           <View style={styles.modeToggleRow}>
             <Pressable
-              onPress={toggleScanMode}
+              onPress={() => selectScanMode('label')}
               style={[
                 styles.modeToggleButton,
                 scanMode === 'label' && styles.modeToggleActive,
@@ -537,7 +561,7 @@ export default function CameraScreen() {
               </Text>
             </Pressable>
             <Pressable
-              onPress={toggleScanMode}
+              onPress={() => selectScanMode('menu')}
               style={[
                 styles.modeToggleButton,
                 scanMode === 'menu' && styles.modeToggleActive,

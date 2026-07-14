@@ -1,16 +1,38 @@
 import React, { useEffect } from 'react';
-import { Pressable, View, StyleSheet, Platform } from 'react-native';
+import { Pressable, View, StyleSheet, Platform, Alert } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Tabs, router } from 'expo-router';
 import { Compass, Home, Heart, Camera, Building2 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme-context';
+import { useAuth } from '@/lib/auth-context';
+import { useGuestUsageStore, FREE_SCAN_LIMIT } from '@/lib/guest-usage-store';
 
 function CameraTabButton() {
   const { colors } = useTheme();
+  const { isGuest, session } = useAuth();
+  const canScanLabel = useGuestUsageStore((s) => s.canScanLabel);
+  const loadUsage = useGuestUsageStore((s) => s.loadUsage);
+  const isLoaded = useGuestUsageStore((s) => s.isLoaded);
+
+  useEffect(() => {
+    if (!isLoaded) void loadUsage();
+  }, [isLoaded, loadUsage]);
+
   const handlePress = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (isGuest && !session?.access_token && !canScanLabel()) {
+      Alert.alert(
+        'Free Scans Used Up',
+        `You've used all ${FREE_SCAN_LIMIT} free label scans. Create an account to keep scanning and unlock the menu scanner.`,
+        [
+          { text: 'Sign Up', onPress: () => router.push('/welcome') },
+          { text: 'Not Now', style: 'cancel' },
+        ],
+      );
+      return;
+    }
     router.push('/camera');
   };
 

@@ -37,7 +37,9 @@ import {
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { useSake, useSakeRatings, useIsFavorite, useToggleFavorite, useMenuPricesForSake } from '@/lib/supabase-hooks';
+import { useSake, useSakeRatings, useIsFavorite, useToggleFavorite, useMenuPricesForSake, useUserFavorites } from '@/lib/supabase-hooks';
+import { useSubscription } from '@/lib/subscription-context';
+import { FREE_FAVORITES_LIMIT } from '@/lib/purchases';
 import { useAuth } from '@/lib/auth-context';
 import { resolveSakeImageUrl } from '@/lib/supabase';
 import { useTheme } from '@/lib/theme-context';
@@ -66,6 +68,8 @@ export default function SakeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
   const { user, isGuest } = useAuth();
+  const { isPro } = useSubscription();
+  const { data: userFavorites } = useUserFavorites(user?.id);
   const { colors } = useTheme();
   const [selectedServing, setSelectedServing] = useState<ServingTemp | null>(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -189,6 +193,10 @@ export default function SakeDetailScreen() {
   const handleFavorite = async () => {
     if (isGuest || !user?.id || !id) {
       router.push('/welcome');
+      return;
+    }
+    if (!isFavorite && !isPro && (userFavorites?.length ?? 0) >= FREE_FAVORITES_LIMIT) {
+      router.push('/paywall');
       return;
     }
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -541,7 +549,7 @@ export default function SakeDetailScreen() {
                 Food Pairings
               </Text>
               <View className="flex-row flex-wrap gap-2">
-                {sake.foodPairings.map((food, idx) => (
+                {(isPro ? sake.foodPairings : sake.foodPairings.slice(0, 1)).map((food, idx) => (
                   <View
                     key={`fp-${idx}`}
                     className="px-4 py-2 rounded-full"
@@ -553,6 +561,17 @@ export default function SakeDetailScreen() {
                   </View>
                 ))}
               </View>
+              {!isPro && sake.foodPairings.length > 1 && (
+                <Pressable
+                  onPress={() => router.push('/paywall')}
+                  className="mt-3 py-2.5 rounded-full items-center"
+                  style={{ backgroundColor: '#C9A22718' }}
+                >
+                  <Text style={{ color: '#C9A227', fontWeight: '700', fontSize: 13 }}>
+                    See all {sake.foodPairings.length} pairings with Pro
+                  </Text>
+                </Pressable>
+              )}
             </View>
           )}
 

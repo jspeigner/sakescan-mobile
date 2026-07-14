@@ -24,6 +24,7 @@ import { AuthProvider, useAuth } from '@/lib/auth-context';
 import { ThemeProvider as CustomThemeProvider, useTheme } from '@/lib/theme-context';
 import { NotificationProvider } from '@/lib/notification-context';
 import { I18nProvider } from '@/lib/i18n-context';
+import { SubscriptionProvider } from '@/lib/subscription-context';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Text, View } from 'react-native';
 import { Linking } from 'react-native';
@@ -152,6 +153,14 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
         />
         <Stack.Screen
           name="paywall"
+          options={{
+            headerShown: false,
+            presentation: 'modal',
+            animation: 'slide_from_bottom',
+          }}
+        />
+        <Stack.Screen
+          name="account-gate"
           options={{
             headerShown: false,
             presentation: 'modal',
@@ -363,15 +372,17 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <ErrorBoundary>
             <AuthProvider>
-              <I18nProvider>
-                <CustomThemeProvider>
-                  <NotificationProvider>
-                    <GestureHandlerRootView style={{ flex: 1 }}>
-                      <AppContent fontsReady={fontsReady} />
-                    </GestureHandlerRootView>
-                  </NotificationProvider>
-                </CustomThemeProvider>
-              </I18nProvider>
+              <SubscriptionProvider>
+                <I18nProvider>
+                  <CustomThemeProvider>
+                    <NotificationProvider>
+                      <GestureHandlerRootView style={{ flex: 1 }}>
+                        <AppContent fontsReady={fontsReady} />
+                      </GestureHandlerRootView>
+                    </NotificationProvider>
+                  </CustomThemeProvider>
+                </I18nProvider>
+              </SubscriptionProvider>
             </AuthProvider>
           </ErrorBoundary>
         </QueryClientProvider>

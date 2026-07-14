@@ -522,6 +522,14 @@ export interface Database {
           comment_count: number;
         }[];
       };
+      get_menu_scan_quota: {
+        Args: Record<string, never>;
+        Returns: {
+          used: number;
+          limit_count: number;
+          month_start: string;
+        }[];
+      };
     };
   };
 }

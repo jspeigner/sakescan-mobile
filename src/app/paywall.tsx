@@ -1,5 +1,13 @@
-import { useEffect } from 'react';
-import { Text, View, Pressable } from 'react-native';
+import { useEffect, useState } from 'react';
+import {
+  Text,
+  View,
+  Pressable,
+  ScrollView,
+  ActivityIndicator,
+  Alert,
+  Linking,
+} from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -12,26 +20,62 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import {
   BookOpen,
-  ScanLine,
+  Utensils,
+  Heart,
   Bookmark,
-  Sparkles,
   ChevronLeft,
   Check,
+  Sparkles,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/lib/theme-context';
+import { useAuth } from '@/lib/auth-context';
+import { useSubscription } from '@/lib/subscription-context';
+import { FALLBACK_PRICES } from '@/lib/purchases';
 
 const FEATURES = [
-  { icon: BookOpen, label: 'Unlimited Menu Scans', desc: 'Scan any restaurant or izakaya menu—no caps on how often you check the list' },
-  { icon: Bookmark, label: 'Saved Menus', desc: 'Keep past menu scans so you can revisit picks and prices later' },
-  { icon: Sparkles, label: 'Richer Recommendations', desc: 'Taste-matched top picks with clearer value and pairing reasons' },
-  { icon: ScanLine, label: 'Unlimited Label Scans', desc: 'No limits on individual bottle label scanning' },
+  {
+    icon: BookOpen,
+    label: 'Unlimited Menu Scans',
+    desc: 'Scan entire menus instantly—no monthly caps',
+  },
+  {
+    icon: Utensils,
+    label: 'Full Food Pairings',
+    desc: 'See every expert pairing for each sake',
+  },
+  {
+    icon: Heart,
+    label: 'Unlimited Collection',
+    desc: 'Save and rate every bottle you try',
+  },
+  {
+    icon: Bookmark,
+    label: 'Saved Menus',
+    desc: 'Revisit past menus, picks, and prices anytime',
+  },
 ];
+
+type PlanId = 'annual' | 'monthly';
+
+const TERMS_URL = 'https://sakescan.com/terms';
+const PRIVACY_URL = 'https://sakescan.com/privacy';
 
 export default function PaywallScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
+  const { user, isGuest } = useAuth();
+  const {
+    isPro,
+    annualPackage,
+    monthlyPackage,
+    purchase,
+    restore,
+    isLoading,
+  } = useSubscription();
+  const [plan, setPlan] = useState<PlanId>('annual');
+  const [busy, setBusy] = useState(false);
 
   const headerY = useSharedValue(-20);
   const headerOpacity = useSharedValue(0);
@@ -47,6 +91,12 @@ export default function PaywallScreen() {
     ctaOpacity.value = withDelay(500, withTiming(1, { duration: 300 }));
   }, [headerY, headerOpacity, featuresOpacity, ctaScale, ctaOpacity]);
 
+  useEffect(() => {
+    if (isPro) {
+      router.back();
+    }
+  }, [isPro]);
+
   const headerStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: headerY.value }],
     opacity: headerOpacity.value,
@@ -57,9 +107,67 @@ export default function PaywallScreen() {
     opacity: ctaOpacity.value,
   }));
 
+  const annualPrice = annualPackage?.product.priceString ?? FALLBACK_PRICES.annual;
+  const monthlyPrice = monthlyPackage?.product.priceString ?? FALLBACK_PRICES.monthly;
+
+  const handleSubscribe = async () => {
+    if (isGuest || !user) {
+      router.replace('/account-gate');
+      return;
+    }
+    const pkg = plan === 'annual' ? annualPackage : monthlyPackage;
+    if (!pkg) {
+      Alert.alert(
+        'Unavailable',
+        'Subscriptions are not available yet. Add your RevenueCat API key and App Store products, then try again.',
+      );
+      return;
+    }
+    setBusy(true);
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      const result = await purchase(pkg);
+      if (result.cancelled) return;
+      if (result.error) {
+        Alert.alert('Purchase failed', result.error);
+        return;
+      }
+      if (result.success) {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        router.back();
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    if (isGuest || !user) {
+      router.replace('/account-gate');
+      return;
+    }
+    setBusy(true);
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      const result = await restore();
+      if (result.error) {
+        Alert.alert('Restore failed', result.error);
+        return;
+      }
+      if (result.isPro) {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert('Welcome back', 'SakeScan Pro has been restored.');
+        router.back();
+      } else {
+        Alert.alert('No purchases found', 'We could not find an active SakeScan Pro subscription.');
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      {/* Back button */}
       <View style={{ position: 'absolute', top: insets.top + 8, left: 16, zIndex: 10 }}>
         <Pressable
           onPress={async () => {
@@ -79,53 +187,72 @@ export default function PaywallScreen() {
         </Pressable>
       </View>
 
-      <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 28, paddingTop: insets.top + 60 }}>
-        {/* Header */}
-        <Animated.View style={[{ alignItems: 'center', marginBottom: 40 }, headerStyle]}>
+      <ScrollView
+        contentContainerStyle={{
+          paddingHorizontal: 28,
+          paddingTop: insets.top + 56,
+          paddingBottom: 24,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        <Animated.View style={[{ alignItems: 'center', marginBottom: 28 }, headerStyle]}>
           <LinearGradient
-            colors={[`${colors.brandRed}30`, `${colors.primary}20`, 'transparent']}
+            colors={['#C9A22740', `${colors.brandRed}25`, 'transparent']}
             style={{
-              width: 100,
-              height: 100,
-              borderRadius: 50,
+              width: 96,
+              height: 96,
+              borderRadius: 48,
               alignItems: 'center',
               justifyContent: 'center',
-              marginBottom: 24,
+              marginBottom: 20,
             }}
           >
-            <Sparkles size={44} color={colors.brandRed} strokeWidth={1.5} />
+            <Sparkles size={40} color="#C9A227" strokeWidth={1.5} />
           </LinearGradient>
+
+          <View
+            style={{
+              paddingHorizontal: 12,
+              paddingVertical: 4,
+              borderRadius: 999,
+              backgroundColor: '#C9A22722',
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ color: '#C9A227', fontWeight: '700', fontSize: 12, letterSpacing: 0.6 }}>
+              SAKESCAN PRO
+            </Text>
+          </View>
 
           <Text
             style={{
               width: '100%',
               fontFamily: 'NotoSerifJP_700Bold',
-              fontSize: 30,
+              fontSize: 28,
               color: colors.text,
               textAlign: 'center',
-              marginBottom: 8,
+              marginBottom: 10,
             }}
             adjustsFontSizeToFit
             minimumFontScale={0.78}
-            maxFontSizeMultiplier={1.35}
+            maxFontSizeMultiplier={1.3}
             numberOfLines={2}
           >
-            Unlock SakeScan
+            Never Order the Wrong Sake Again.
           </Text>
           <Text
             style={{
-              fontSize: 16,
+              fontSize: 15,
               color: colors.textSecondary,
               textAlign: 'center',
-              lineHeight: 24,
+              lineHeight: 22,
             }}
           >
-            Create a free account for unlimited menu scans,{'\n'}saved menus, and richer recommendations.
+            Unlock unlimited menu scans, full food pairings,{'\n'}and an unlimited collection.
           </Text>
         </Animated.View>
 
-        {/* Feature list */}
-        <Animated.View style={[{ marginBottom: 40 }, featuresStyle]}>
+        <Animated.View style={[{ marginBottom: 24 }, featuresStyle]}>
           {FEATURES.map((f, i) => {
             const Icon = f.icon;
             return (
@@ -134,38 +261,30 @@ export default function PaywallScreen() {
                 style={{
                   flexDirection: 'row',
                   alignItems: 'flex-start',
-                  marginBottom: i < FEATURES.length - 1 ? 20 : 0,
+                  marginBottom: i < FEATURES.length - 1 ? 16 : 0,
                 }}
               >
                 <View
                   style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 14,
-                    backgroundColor: `${colors.primary}15`,
+                    width: 40,
+                    height: 40,
+                    borderRadius: 12,
+                    backgroundColor: '#C9A22718',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    marginRight: 14,
+                    marginRight: 12,
                   }}
                 >
-                  <Icon size={22} color={colors.primary} />
+                  <Icon size={20} color="#C9A227" />
                 </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text
-                      style={{
-                        flexShrink: 1,
-                        fontSize: 16,
-                        fontWeight: '700',
-                        color: colors.text,
-                      }}
-                      numberOfLines={2}
-                    >
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, flex: 1 }}>
                       {f.label}
                     </Text>
-                    <Check size={14} color={colors.primary} strokeWidth={3} />
+                    <Check size={14} color="#C9A227" strokeWidth={3} />
                   </View>
-                  <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2, lineHeight: 19 }}>
+                  <Text style={{ fontSize: 13, color: colors.textTertiary, marginTop: 2, lineHeight: 18 }}>
                     {f.desc}
                   </Text>
                 </View>
@@ -173,64 +292,141 @@ export default function PaywallScreen() {
             );
           })}
         </Animated.View>
-      </View>
 
-      {/* CTA buttons */}
+        {/* Plan toggle */}
+        <View style={{ marginBottom: 8 }}>
+          <Pressable
+            onPress={() => setPlan('annual')}
+            style={{
+              borderWidth: 2,
+              borderColor: plan === 'annual' ? '#C9A227' : colors.border,
+              backgroundColor: plan === 'annual' ? '#C9A22712' : colors.surface,
+              borderRadius: 16,
+              padding: 16,
+              marginBottom: 10,
+            }}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View>
+                <Text style={{ fontWeight: '700', fontSize: 16, color: colors.text }}>Annual</Text>
+                <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>
+                  {annualPrice}/year (Just {FALLBACK_PRICES.annualPerMonth}/mo)
+                </Text>
+                <Text style={{ fontSize: 12, color: '#C9A227', fontWeight: '600', marginTop: 4 }}>
+                  Includes 7-Day Free Trial
+                </Text>
+              </View>
+              <View
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: 11,
+                  borderWidth: 2,
+                  borderColor: plan === 'annual' ? '#C9A227' : colors.border,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: plan === 'annual' ? '#C9A227' : 'transparent',
+                }}
+              >
+                {plan === 'annual' && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
+              </View>
+            </View>
+          </Pressable>
+
+          <Pressable
+            onPress={() => setPlan('monthly')}
+            style={{
+              borderWidth: 2,
+              borderColor: plan === 'monthly' ? '#C9A227' : colors.border,
+              backgroundColor: plan === 'monthly' ? '#C9A22712' : colors.surface,
+              borderRadius: 16,
+              padding: 16,
+            }}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View>
+                <Text style={{ fontWeight: '700', fontSize: 16, color: colors.text }}>Monthly</Text>
+                <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>
+                  {monthlyPrice}/month
+                </Text>
+              </View>
+              <View
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: 11,
+                  borderWidth: 2,
+                  borderColor: plan === 'monthly' ? '#C9A227' : colors.border,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: plan === 'monthly' ? '#C9A227' : 'transparent',
+                }}
+              >
+                {plan === 'monthly' && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
+              </View>
+            </View>
+          </Pressable>
+        </View>
+      </ScrollView>
+
       <Animated.View
-        style={[
-          { paddingHorizontal: 28, paddingBottom: insets.bottom + 24 },
-          ctaStyle,
-        ]}
+        style={[{ paddingHorizontal: 28, paddingBottom: insets.bottom + 16 }, ctaStyle]}
       >
         <Pressable
-          onPress={async () => {
-            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            router.replace('/welcome');
-          }}
+          onPress={handleSubscribe}
+          disabled={busy || isLoading}
           style={{
-            backgroundColor: colors.brandRed,
+            backgroundColor: '#C9A227',
             paddingVertical: 18,
             borderRadius: 28,
             alignItems: 'center',
-            shadowColor: colors.brandRed,
-            shadowOffset: { width: 0, height: 6 },
-            shadowOpacity: 0.3,
-            shadowRadius: 16,
-            elevation: 8,
+            opacity: busy ? 0.7 : 1,
           }}
         >
-          <Text style={{ color: '#FFFFFF', fontSize: 17, fontWeight: '700' }}>
-            Create Free Account
-          </Text>
+          {busy ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={{ color: '#FFFFFF', fontSize: 17, fontWeight: '700' }}>
+              {plan === 'annual' ? 'Start 7-Day Free Trial' : 'Subscribe'}
+            </Text>
+          )}
         </Pressable>
+        {plan === 'annual' && (
+          <Text
+            style={{
+              textAlign: 'center',
+              color: colors.textTertiary,
+              fontSize: 12,
+              marginTop: 8,
+            }}
+          >
+            Cancel anytime before trial ends
+          </Text>
+        )}
 
-        <Pressable
-          onPress={async () => {
-            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.push('/auth');
-          }}
+        <View
           style={{
-            paddingVertical: 14,
-            alignItems: 'center',
-            marginTop: 12,
+            flexDirection: 'row',
+            justifyContent: 'center',
+            flexWrap: 'wrap',
+            marginTop: 16,
+            gap: 12,
           }}
         >
-          <Text style={{ color: colors.primary, fontSize: 15, fontWeight: '600' }}>
-            Already have an account? Sign In
-          </Text>
-        </Pressable>
-
-        <Pressable
-          onPress={async () => {
-            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.back();
-          }}
-          style={{ paddingVertical: 10, alignItems: 'center', marginTop: 4 }}
-        >
-          <Text style={{ color: colors.textTertiary, fontSize: 14 }}>
-            Maybe Later
-          </Text>
-        </Pressable>
+          <Pressable onPress={handleRestore}>
+            <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '600' }}>
+              Restore Purchases
+            </Text>
+          </Pressable>
+          <Text style={{ color: colors.border }}>|</Text>
+          <Pressable onPress={() => Linking.openURL(TERMS_URL)}>
+            <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Terms of Service</Text>
+          </Pressable>
+          <Text style={{ color: colors.border }}>|</Text>
+          <Pressable onPress={() => Linking.openURL(PRIVACY_URL)}>
+            <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Privacy Policy</Text>
+          </Pressable>
+        </View>
       </Animated.View>
     </View>
   );
