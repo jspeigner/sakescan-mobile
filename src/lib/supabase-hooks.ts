@@ -72,6 +72,26 @@ export function useSearchSake(query: string) {
   });
 }
 
+/** Exact brewery match (case-insensitive) for brewery detail pages. */
+export function useSakeByBrewery(breweryName: string | undefined) {
+  return useQuery({
+    queryKey: ['sake', 'brewery', breweryName],
+    queryFn: async () => {
+      if (!breweryName?.trim()) return [];
+
+      const { data, error } = await supabase
+        .from('sake')
+        .select('*')
+        .ilike('brewery', breweryName.trim())
+        .order('average_rating', { ascending: false, nullsFirst: false });
+
+      if (error) throw error;
+      return data as Sake[];
+    },
+    enabled: !!breweryName?.trim(),
+  });
+}
+
 export function useSakeByType(type: string | null) {
   return useQuery({
     queryKey: ['sake', 'type', type],
@@ -240,6 +260,22 @@ export function useUpdateRating() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['ratings', 'sake', variables.sakeId] });
       queryClient.invalidateQueries({ queryKey: ['ratings', 'user', variables.userId] });
+    },
+  });
+}
+
+export function useClearUserRatings() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      const { error } = await supabase.from('ratings').delete().eq('user_id', userId);
+      if (error) throw error;
+    },
+    onSuccess: (_, userId) => {
+      queryClient.invalidateQueries({ queryKey: ['ratings'] });
+      queryClient.invalidateQueries({ queryKey: ['ratings', 'user', userId] });
+      queryClient.invalidateQueries({ queryKey: ['sake'] });
     },
   });
 }
@@ -525,6 +561,41 @@ export function useCreateScan() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scans'] });
+    },
+  });
+}
+
+export function useDeleteScan() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (params: { scanId: string; userId: string }) => {
+      const { error } = await supabase
+        .from('scans')
+        .delete()
+        .eq('id', params.scanId)
+        .eq('user_id', params.userId);
+
+      if (error) throw error;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['scans'] });
+      queryClient.invalidateQueries({ queryKey: ['scans', 'user', variables.userId] });
+    },
+  });
+}
+
+export function useClearUserScans() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      const { error } = await supabase.from('scans').delete().eq('user_id', userId);
+      if (error) throw error;
+    },
+    onSuccess: (_, userId) => {
+      queryClient.invalidateQueries({ queryKey: ['scans'] });
+      queryClient.invalidateQueries({ queryKey: ['scans', 'user', userId] });
     },
   });
 }
