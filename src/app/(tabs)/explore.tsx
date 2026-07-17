@@ -9,6 +9,8 @@ import { useSakeList, useSakeByRegion, useAllScans } from '@/lib/supabase-hooks'
 import { resolveSakeImageUrl } from '@/lib/supabase';
 import type { Sake as SupabaseSake } from '@/lib/database.types';
 import { useScanHistoryStore } from '@/lib/scan-history-store';
+import { useTheme } from '@/lib/theme-context';
+import { useI18n } from '@/lib/i18n-context';
 
 type FilterType = 'All Types' | 'Junmai' | 'Ginjo' | 'Daiginjo' | 'Honjozo';
 
@@ -27,6 +29,8 @@ function mapSupabaseSake(sake: SupabaseSake) {
 
 export default function ExploreScreen() {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+  const { t } = useI18n();
   const [activeFilter, setActiveFilter] = useState<FilterType>('All Types');
 
   // Load scan history on mount
@@ -117,14 +121,15 @@ export default function ExploreScreen() {
     });
 
   return (
-    <View className="flex-1 bg-[#FAFAF8]" style={{ paddingTop: insets.top }}>
+    <View className="flex-1" style={{ backgroundColor: colors.background, paddingTop: insets.top }}>
       {/* Header */}
       <View className="flex-row items-center justify-between px-5 py-3">
         <Pressable
           onPress={() => router.push('/profile')}
-          className="w-10 h-10 rounded-full bg-[#F0EDE5] items-center justify-center"
+          className="w-10 h-10 rounded-full items-center justify-center"
+          style={{ backgroundColor: colors.border }}
         >
-          <User size={20} color="#1a1a1a" />
+          <User size={20} color={colors.text} />
         </Pressable>
         <View style={{ flex: 1, alignItems: 'center', paddingHorizontal: 8, minWidth: 0 }}>
           <Text
@@ -132,7 +137,7 @@ export default function ExploreScreen() {
               fontFamily: 'NotoSerifJP_600SemiBold',
               fontSize: 20,
               fontWeight: '600',
-              color: '#1a1a1a',
+              color: colors.text,
               textAlign: 'center',
               width: '100%',
             }}
@@ -144,8 +149,11 @@ export default function ExploreScreen() {
             SakeScan
           </Text>
         </View>
-        <Pressable className="w-10 h-10 rounded-full bg-[#F0EDE5] items-center justify-center">
-          <Bell size={20} color="#1a1a1a" />
+        <Pressable
+          className="w-10 h-10 rounded-full items-center justify-center"
+          style={{ backgroundColor: colors.border }}
+        >
+          <Bell size={20} color={colors.text} />
         </Pressable>
       </View>
 
@@ -159,13 +167,13 @@ export default function ExploreScreen() {
           <Pressable
             onPress={handleAdvancedFilters}
             className="flex-row items-center px-4 py-3 rounded-xl"
-            style={{ backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E8E4D9' }}
+            style={{ backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderLight }}
           >
-            <Search size={18} color="#8B8B8B" />
-            <Text className="flex-1 ml-3 text-base text-[#8B8B8B]">
-              Search sake, breweries...
+            <Search size={18} color={colors.textTertiary} />
+            <Text className="flex-1 ml-3 text-base" style={{ color: colors.textTertiary }}>
+              {t('explore.search')}
             </Text>
-            <SlidersHorizontal size={18} color="#C9A227" />
+            <SlidersHorizontal size={18} color={colors.primary} />
           </Pressable>
         </View>
 
@@ -182,14 +190,14 @@ export default function ExploreScreen() {
               onPress={() => handleFilterPress(filter)}
               className="px-4 py-2 rounded-full"
               style={{
-                backgroundColor: activeFilter === filter ? '#C9A227' : '#FFFFFF',
+                backgroundColor: activeFilter === filter ? colors.primary : colors.surface,
                 borderWidth: 1,
-                borderColor: activeFilter === filter ? '#C9A227' : '#E8E4D9',
+                borderColor: activeFilter === filter ? colors.primary : colors.borderLight,
               }}
             >
               <Text
                 className="text-sm font-medium"
-                style={{ color: activeFilter === filter ? '#FFFFFF' : '#1a1a1a' }}
+                style={{ color: activeFilter === filter ? '#FFFFFF' : colors.text }}
               >
                 {filter}
               </Text>
@@ -199,11 +207,11 @@ export default function ExploreScreen() {
 
         {isError ? (
           <View className="items-center py-16 px-5">
-            <GlassWater size={48} color="#C9A227" />
-            <Text className="text-[#1a1a1a] font-semibold text-lg mt-4 text-center">
+            <GlassWater size={48} color={colors.primary} />
+            <Text className="font-semibold text-lg mt-4 text-center" style={{ color: colors.text }}>
               Could not load the sake list
             </Text>
-            <Text className="text-[#8B8B8B] text-center mt-2 text-sm">
+            <Text className="text-center mt-2 text-sm" style={{ color: colors.textTertiary }}>
               {error &&
               typeof error === 'object' &&
               'message' in error &&
@@ -212,7 +220,7 @@ export default function ExploreScreen() {
                 : 'Check your internet connection. Use the same Supabase project for EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY (or EXPO_PUBLIC_SUPABASE_KEY).'}
             </Text>
             {__DEV__ && error && typeof error === 'object' && 'message' in error ? (
-              <Text className="text-[#B8860B] text-center mt-3 text-xs font-mono px-2">
+              <Text className="text-center mt-3 text-xs font-mono px-2" style={{ color: colors.warning }}>
                 {(error as { message: string }).message}
               </Text>
             ) : null}
@@ -221,7 +229,8 @@ export default function ExploreScreen() {
                 void refetch();
               }}
               disabled={isFetching}
-              className="mt-6 flex-row items-center px-6 py-3 rounded-full bg-[#C9A227]"
+              className="mt-6 flex-row items-center px-6 py-3 rounded-full"
+              style={{ backgroundColor: colors.primary }}
             >
               <RefreshCw size={18} color="#FFFFFF" />
               <Text className="text-white font-semibold ml-2">{isFetching ? 'Retrying…' : 'Try again'}</Text>
@@ -229,16 +238,16 @@ export default function ExploreScreen() {
           </View>
         ) : isLoading ? (
           <View className="items-center py-20">
-            <ActivityIndicator size="large" color="#C9A227" />
-            <Text className="text-[#8B8B8B] mt-4">Loading sake...</Text>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text className="mt-4" style={{ color: colors.textTertiary }}>Loading sake...</Text>
           </View>
         ) : filteredSake.length === 0 ? (
           <View className="items-center py-20 px-5">
-            <GlassWater size={48} color="#C9A227" />
-            <Text className="text-[#1a1a1a] font-semibold text-lg mt-4">
+            <GlassWater size={48} color={colors.primary} />
+            <Text className="font-semibold text-lg mt-4" style={{ color: colors.text }}>
               No sake found
             </Text>
-            <Text className="text-[#8B8B8B] text-center mt-2">
+            <Text className="text-center mt-2" style={{ color: colors.textTertiary }}>
               {activeFilter !== 'All Types'
                 ? `No ${activeFilter} sake in the database yet`
                 : 'The sake database is empty. Scan labels to help build it!'}
@@ -251,17 +260,17 @@ export default function ExploreScreen() {
               <View className="px-5 mb-6">
                 <View className="flex-row justify-between items-center mb-4">
                   <View className="flex-row items-center">
-                    <Globe size={20} color="#C9A227" />
-                    <Text className="text-lg font-bold text-[#1a1a1a] ml-2">Community Discoveries</Text>
+                    <Globe size={20} color={colors.primary} />
+                    <Text className="text-lg font-bold ml-2" style={{ color: colors.text }}>Community Discoveries</Text>
                   </View>
-                  <View className="px-2 py-1 rounded-full bg-[#C9A227]/10">
-                    <Text className="text-[#C9A227] text-xs font-semibold">
+                  <View className="px-2 py-1 rounded-full" style={{ backgroundColor: colors.primary + '1A' }}>
+                    <Text className="text-xs font-semibold" style={{ color: colors.primary }}>
                       {globalScannedSake.length} scanned
                     </Text>
                   </View>
                 </View>
 
-                <Text className="text-[#8B8B8B] text-sm mb-3">
+                <Text className="text-sm mb-3" style={{ color: colors.textTertiary }}>
                   Sake recently scanned by our community
                 </Text>
 
@@ -285,16 +294,16 @@ export default function ExploreScreen() {
                       <View className="rounded-2xl overflow-hidden mb-2">
                         <SakeImage uri={sake.labelImageUrl} height={180} />
                       </View>
-                      <Text className="text-[#1a1a1a] font-bold text-sm" numberOfLines={1}>
+                      <Text className="font-bold text-sm" numberOfLines={1} style={{ color: colors.text }}>
                         {sake.name}
                       </Text>
-                      <Text className="text-[#8B8B8B] text-xs" numberOfLines={1}>
+                      <Text className="text-xs" numberOfLines={1} style={{ color: colors.textTertiary }}>
                         {sake.breweryName}
                       </Text>
                       {sake.avgRating > 0 && (
                         <View className="flex-row items-center mt-1">
-                          <Star size={10} fill="#C9A227" color="#C9A227" />
-                          <Text className="text-[#1a1a1a] text-xs ml-1">
+                          <Star size={10} fill={colors.primary} color={colors.primary} />
+                          <Text className="text-xs ml-1" style={{ color: colors.text }}>
                             {sake.avgRating.toFixed(1)}
                           </Text>
                         </View>
@@ -310,11 +319,11 @@ export default function ExploreScreen() {
               <View className="px-5 mb-6">
                 <View className="flex-row justify-between items-center mb-4">
                   <View className="flex-row items-center">
-                    <Clock size={20} color="#C9A227" />
-                    <Text className="text-lg font-bold text-[#1a1a1a] ml-2">Recently Scanned</Text>
+                    <Clock size={20} color={colors.primary} />
+                    <Text className="text-lg font-bold ml-2" style={{ color: colors.text }}>Recently Scanned</Text>
                   </View>
                   <Pressable onPress={() => router.push('/scan-history')}>
-                    <Text className="text-[#C9A227] font-medium">See All</Text>
+                    <Text className="font-medium" style={{ color: colors.primary }}>{t('home.seeAll')}</Text>
                   </Pressable>
                 </View>
 
@@ -343,10 +352,10 @@ export default function ExploreScreen() {
                       <View className="rounded-2xl overflow-hidden mb-2">
                         <SakeImage uri={scan.imageUri} height={180} />
                       </View>
-                      <Text className="text-[#1a1a1a] font-bold text-sm" numberOfLines={1}>
+                      <Text className="font-bold text-sm" numberOfLines={1} style={{ color: colors.text }}>
                         {scan.sakeInfo.name}
                       </Text>
-                      <Text className="text-[#8B8B8B] text-xs" numberOfLines={1}>
+                      <Text className="text-xs" numberOfLines={1} style={{ color: colors.textTertiary }}>
                         {scan.sakeInfo.brewery}
                       </Text>
                     </Pressable>
@@ -359,9 +368,9 @@ export default function ExploreScreen() {
             {trendingSake.length > 0 && (
               <View className="px-5 mb-6">
                 <View className="flex-row justify-between items-center mb-4">
-                  <Text className="text-lg font-bold text-[#1a1a1a]">Trending This Week</Text>
+                  <Text className="text-lg font-bold" style={{ color: colors.text }}>Trending This Week</Text>
                   <Pressable onPress={handleSeeAllCatalog} hitSlop={8}>
-                    <Text className="text-[#C9A227] font-medium">See All</Text>
+                    <Text className="font-medium" style={{ color: colors.primary }}>{t('home.seeAll')}</Text>
                   </Pressable>
                 </View>
 
@@ -375,10 +384,10 @@ export default function ExploreScreen() {
                       <View className="rounded-2xl overflow-hidden mb-2">
                         <SakeImage uri={sake.labelImageUrl} height={180} />
                       </View>
-                      <Text className="text-[#1a1a1a] font-bold text-base" numberOfLines={1}>{sake.name}</Text>
+                      <Text className="font-bold text-base" numberOfLines={1} style={{ color: colors.text }}>{sake.name}</Text>
                       <View className="flex-row items-center mt-1">
-                        <Star size={12} fill="#C9A227" color="#C9A227" />
-                        <Text className="text-[#1a1a1a] text-sm ml-1">{sake.avgRating.toFixed(1)}</Text>
+                        <Star size={12} fill={colors.primary} color={colors.primary} />
+                        <Text className="text-sm ml-1" style={{ color: colors.text }}>{sake.avgRating.toFixed(1)}</Text>
                       </View>
                     </Pressable>
                   ))}
@@ -390,9 +399,9 @@ export default function ExploreScreen() {
             {newArrivals.length > 0 && (
               <View className="px-5 mb-6">
                 <View className="flex-row justify-between items-center mb-4">
-                  <Text className="text-lg font-bold text-[#1a1a1a]">New Arrivals</Text>
+                  <Text className="text-lg font-bold" style={{ color: colors.text }}>New Arrivals</Text>
                   <Pressable onPress={handleSeeAllCatalog} hitSlop={8}>
-                    <Text className="text-[#C9A227] font-medium">See All</Text>
+                    <Text className="font-medium" style={{ color: colors.primary }}>{t('home.seeAll')}</Text>
                   </Pressable>
                 </View>
 
@@ -407,7 +416,7 @@ export default function ExploreScreen() {
                       <View className="rounded-2xl overflow-hidden mb-2">
                         <SakeImage uri={sake.labelImageUrl} height={140} />
                       </View>
-                      <Text className="text-[#1a1a1a] font-semibold text-sm" numberOfLines={1}>
+                      <Text className="font-semibold text-sm" numberOfLines={1} style={{ color: colors.text }}>
                         {sake.name}
                       </Text>
                     </Pressable>
@@ -420,9 +429,9 @@ export default function ExploreScreen() {
             {topRatedNiigata.length > 0 && (
               <View className="px-5 mb-6">
                 <View className="flex-row justify-between items-center mb-4">
-                  <Text className="text-lg font-bold text-[#1a1a1a]">Top Rated in Niigata</Text>
+                  <Text className="text-lg font-bold" style={{ color: colors.text }}>Top Rated in Niigata</Text>
                   <Pressable onPress={handleSeeAllNiigata} hitSlop={8}>
-                    <Text className="text-[#C9A227] font-medium">See All</Text>
+                    <Text className="font-medium" style={{ color: colors.primary }}>{t('home.seeAll')}</Text>
                   </Pressable>
                 </View>
 
@@ -434,18 +443,18 @@ export default function ExploreScreen() {
                   >
                     <View
                       className="flex-row items-center p-3 rounded-2xl"
-                      style={{ backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#F0EDE5' }}
+                      style={{ backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}
                     >
                       <View className="w-14 h-14 rounded-xl overflow-hidden">
                         <SakeImage uri={sake.labelImageUrl} height={56} contentFit="cover" />
                       </View>
                       <View className="flex-1 ml-3">
-                        <Text className="text-[#1a1a1a] font-bold text-base" numberOfLines={1}>{sake.name}</Text>
-                        <Text className="text-[#8B8B8B] text-sm">{sake.sakeType}</Text>
+                        <Text className="font-bold text-base" numberOfLines={1} style={{ color: colors.text }}>{sake.name}</Text>
+                        <Text className="text-sm" style={{ color: colors.textTertiary }}>{sake.sakeType}</Text>
                       </View>
                       <View className="flex-row items-center">
-                        <Star size={14} fill="#C9A227" color="#C9A227" />
-                        <Text className="text-[#C9A227] font-semibold ml-1">
+                        <Star size={14} fill={colors.primary} color={colors.primary} />
+                        <Text className="font-semibold ml-1" style={{ color: colors.primary }}>
                           {sake.avgRating.toFixed(1)}
                         </Text>
                       </View>
