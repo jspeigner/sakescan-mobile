@@ -372,21 +372,95 @@ export function useScanLabel() {
   });
 }
 
-/** Upload a local file URI to the sake-images bucket. Returns the storage path on success. */
-async function uploadLabelImage(localUri: string, sakeId: string): Promise<string | null> {
-  const path = `labels/${sakeId}-${Date.now()}.jpg`;
-  const base64 = await FileSystem.readAsStringAsync(localUri, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
-  const arrayBuffer = decode(base64);
-  const { error } = await supabase.storage
-    .from('sake-images')
-    .upload(path, arrayBuffer, { contentType: 'image/jpeg', upsert: false });
-  if (error) {
-    console.warn('Storage upload error:', error.message);
+function isRemoteHttpsUrl(value: string | null | undefined): boolean {
+  return !!value && /^https:\/\//i.test(value.trim());
+}
+
+function isLocalImageUri(value: string | null | undefined): boolean {
+  if (!value?.trim()) return false;
+  const v = value.trim();
+  if (isRemoteHttpsUrl(v)) return false;
+  // Camera/library URIs or any non-http path that still needs uploading
+  return (
+    v.startsWith('file://') ||
+    v.startsWith('content://') ||
+    v.startsWith('ph://') ||
+    v.startsWith('assets-library://') ||
+    v.startsWith('/') ||
+    !/^https?:\/\//i.test(v)
+  );
+}
+
+type UploadedLabelImage = {
+  /** Object path inside the sake-images bucket */
+  path: string;
+  /** Public HTTPS Storage URL for DB / backend promotion pipelines */
+  publicUrl: string;
+};
+
+/**
+ * Upload a local label/scan photo to the public sake-images bucket.
+ * Path is scoped to `{userId|anonymous}/…` so Storage RLS INSERT policies allow the write.
+ * Always returns a public HTTPS URL (required for scan-photo image-DB promotion).
+ */
+async function uploadLabelImage(
+  localUri: string,
+  sakeId: string,
+  options?: { userId?: string | null; kind?: 'labels' | 'scans' },
+): Promise<UploadedLabelImage | null> {
+  if (!localUri?.trim()) return null;
+
+  if (isRemoteHttpsUrl(localUri)) {
+    return { path: localUri, publicUrl: localUri.trim() };
+  }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const owner = options?.userId ?? user?.id ?? 'anonymous';
+  const kind = options?.kind ?? 'labels';
+  const path = `${owner}/${kind}/${sakeId}-${Date.now()}.jpg`;
+
+  try {
+    const base64 = await FileSystem.readAsStringAsync(localUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    const arrayBuffer = decode(base64);
+    const { error } = await supabase.storage
+      .from('sake-images')
+      .upload(path, arrayBuffer, { contentType: 'image/jpeg', upsert: false });
+    if (error) {
+      console.warn('Storage upload error:', error.message);
+      return null;
+    }
+    const { data } = supabase.storage.from('sake-images').getPublicUrl(path);
+    if (!data.publicUrl) {
+      console.warn('Storage upload succeeded but public URL was empty');
+      return null;
+    }
+    console.log('📸 Uploaded label image to Storage:', data.publicUrl);
+    return { path, publicUrl: data.publicUrl };
+  } catch (err) {
+    console.warn('Storage upload failed:', err);
     return null;
   }
-  return path;
+}
+
+/** Resolve a local scan URI to a public HTTPS Storage URL (uploads when needed). */
+async function ensureScanImageHttpsUrl(params: {
+  imageUri?: string | null;
+  userId: string;
+  sakeId: string;
+}): Promise<string | null> {
+  const imageUri = params.imageUri?.trim();
+  if (!imageUri) return null;
+  if (isRemoteHttpsUrl(imageUri)) return imageUri;
+
+  const uploaded = await uploadLabelImage(imageUri, params.sakeId, {
+    userId: params.userId,
+    kind: 'scans',
+  });
+  return uploaded?.publicUrl ?? null;
 }
 
 export function useCreateSake() {
@@ -429,13 +503,20 @@ export function useCreateSake() {
 
       if (existing) {
         console.log('Sake already exists, returning existing ID:', existing.id);
-        // If the existing record has no image and we have one, upload & patch it
+        // If the existing record has no image and we have a local photo, upload & patch it
         if (!existing.image_url && params.imageUrl) {
           try {
-            const storagePath = await uploadLabelImage(params.imageUrl, existing.id);
-            if (storagePath) {
-              await supabase.from('sake').update({ image_url: storagePath } as Record<string, unknown>).eq('id', existing.id);
-              console.log('📸 Patched missing image_url on existing sake');
+            const uploaded = isLocalImageUri(params.imageUrl)
+              ? await uploadLabelImage(params.imageUrl, existing.id, { kind: 'labels' })
+              : isRemoteHttpsUrl(params.imageUrl)
+                ? { path: params.imageUrl, publicUrl: params.imageUrl.trim() }
+                : null;
+            if (uploaded) {
+              await supabase
+                .from('sake')
+                .update({ image_url: uploaded.publicUrl } as Record<string, unknown>)
+                .eq('id', existing.id);
+              console.log('📸 Patched missing image_url on existing sake:', uploaded.publicUrl);
             }
           } catch (uploadErr) {
             console.warn('⚠️ Could not upload label image for existing sake:', uploadErr);
@@ -475,13 +556,16 @@ export function useCreateSake() {
       if (error) throw error;
       console.log('✅ Created sake with rich OpenAI data in Supabase');
 
-      // Upload the label photo and store the path on the new record
-      if (params.imageUrl) {
+      // Upload the label photo and store the public HTTPS URL on the new record
+      if (params.imageUrl && isLocalImageUri(params.imageUrl)) {
         try {
-          const storagePath = await uploadLabelImage(params.imageUrl, data.id);
-          if (storagePath) {
-            await supabase.from('sake').update({ image_url: storagePath } as Record<string, unknown>).eq('id', data.id);
-            console.log('📸 Label image uploaded and linked to sake:', storagePath);
+          const uploaded = await uploadLabelImage(params.imageUrl, data.id, { kind: 'labels' });
+          if (uploaded) {
+            await supabase
+              .from('sake')
+              .update({ image_url: uploaded.publicUrl } as Record<string, unknown>)
+              .eq('id', data.id);
+            console.log('📸 Label image uploaded and linked to sake:', uploaded.publicUrl);
           }
         } catch (uploadErr) {
           console.warn('⚠️ Could not upload label image (non-fatal):', uploadErr);
@@ -541,15 +625,31 @@ export function useCreateScan() {
     mutationFn: async (params: {
       userId: string;
       sakeId: string;
+      /** Local camera/library URI or already-public HTTPS Storage URL */
       imageUrl?: string;
       ocrRawText?: string;
+      /** When true (default), fill empty sake.image_url from the uploaded scan photo */
+      promoteToSakeImage?: boolean;
     }) => {
+      // Backend image-DB promotion requires HTTPS Storage URLs — never persist file:// URIs.
+      const scannedImageUrl = await ensureScanImageHttpsUrl({
+        imageUri: params.imageUrl,
+        userId: params.userId,
+        sakeId: params.sakeId,
+      });
+
+      if (params.imageUrl && !scannedImageUrl) {
+        console.warn(
+          '⚠️ Scan image upload failed; saving scan without scanned_image_url so local file URIs are not written to the DB',
+        );
+      }
+
       const { data, error } = await supabase
         .from('scans')
         .insert({
           user_id: params.userId,
           sake_id: params.sakeId,
-          scanned_image_url: params.imageUrl ?? null,
+          scanned_image_url: scannedImageUrl,
           ocr_raw_text: params.ocrRawText ?? null,
           matched: true,
         } as Record<string, unknown>)
@@ -557,6 +657,36 @@ export function useCreateScan() {
         .single();
 
       if (error) throw error;
+
+      // Promote scan photo onto catalog sake rows that still lack an image
+      if ((params.promoteToSakeImage ?? true) && scannedImageUrl) {
+        try {
+          const { data: sakeRow } = await supabase
+            .from('sake')
+            .select('id, image_url')
+            .eq('id', params.sakeId)
+            .maybeSingle();
+
+          if (sakeRow && !sakeRow.image_url) {
+            const { error: promoteError } = await supabase
+              .from('sake')
+              .update({ image_url: scannedImageUrl } as Record<string, unknown>)
+              .eq('id', params.sakeId)
+              .is('image_url', null);
+
+            if (promoteError) {
+              console.warn('⚠️ Could not promote scan photo to sake.image_url:', promoteError.message);
+            } else {
+              console.log('📸 Promoted scan photo to sake.image_url:', scannedImageUrl);
+              queryClient.invalidateQueries({ queryKey: ['sake', params.sakeId] });
+              queryClient.invalidateQueries({ queryKey: ['sake'] });
+            }
+          }
+        } catch (promoteErr) {
+          console.warn('⚠️ Sake image promotion failed (non-fatal):', promoteErr);
+        }
+      }
+
       return data;
     },
     onSuccess: () => {

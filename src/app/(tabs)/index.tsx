@@ -70,7 +70,9 @@ export default function HomeScreen() {
       name: scan.sake?.name ?? 'Unknown',
       brewery: scan.sake?.brewery ?? 'Unknown',
       labelImageUrl:
-        (scan as { scanned_image_url?: string | null }).scanned_image_url ||
+        resolveSakeImageUrl(
+          (scan as { scanned_image_url?: string | null }).scanned_image_url,
+        ) ||
         resolveSakeImageUrl(scan.sake?.image_url) ||
         null,
       avgRating: 0,

@@ -433,14 +433,10 @@ export default function ProfileScreen() {
                     className="w-12 h-12 rounded-lg overflow-hidden"
                     style={{ backgroundColor: '#F5EED9' }}
                   >
-                    {scan.scanned_image_url ? (
-                      <Image
-                        source={{ uri: scan.scanned_image_url }}
-                        className="w-full h-full"
-                        resizeMode="cover"
-                      />
-                    ) : (() => {
-                      const url = resolveSakeImageUrl(scan.sake?.image_url);
+                    {(() => {
+                      const url =
+                        resolveSakeImageUrl(scan.scanned_image_url) ||
+                        resolveSakeImageUrl(scan.sake?.image_url);
                       return url ? (
                         <Image
                           source={{ uri: url }}
