@@ -44,7 +44,7 @@ export default function ScanHistoryScreen() {
         name: scan.sake?.name ?? t('scanHistory.unknownSake'),
         brewery: scan.sake?.brewery ?? t('scanHistory.unknownBrewery'),
         imageUri:
-          scan.scanned_image_url ||
+          resolveSakeImageUrl(scan.scanned_image_url) ||
           resolveSakeImageUrl(scan.sake?.image_url) ||
           null,
         timestamp: scan.created_at,

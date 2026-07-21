@@ -3,7 +3,7 @@
     "name": "SakeScan",
     "slug": "sakescan",
     "scheme": "sakescan",
-    "version": "2.1.3",
+    "version": "2.1.4",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -17,7 +17,7 @@
         "NSLocationWhenInUseUsageDescription": "SakeScan uses your location to show nearby stores that carry sake.",
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "5"
+      "buildNumber": "6"
     },
     "android": {
       "edgeToEdgeEnabled": true,

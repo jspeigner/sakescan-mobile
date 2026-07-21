@@ -133,6 +133,7 @@ export default function ScanResultScreen({
             foodPairings: sakeInfo.foodPairings,
             flavorProfile: sakeInfo.flavorProfile,
             servingTemperature: sakeInfo.servingTemperature,
+            // Local file URI — createSake uploads to Storage and stores HTTPS URL on sake.image_url
             imageUrl: imageUri,
           });
           sakeId = sakeResult.id;
@@ -150,14 +151,23 @@ export default function ScanResultScreen({
 
         console.log('✅ Sake saved to Supabase with ID:', sakeId);
 
-        await createScan.mutateAsync({
+        // Always create the scan row. useCreateScan uploads the camera photo to
+        // Storage and persists the public HTTPS URL in scanned_image_url (required
+        // for backend scan-photo → image-DB promotion). Also fills empty sake.image_url.
+        const scanRow = await createScan.mutateAsync({
           userId: user.id,
           sakeId,
           imageUrl: imageUri,
           ocrRawText: JSON.stringify(sakeInfo),
+          promoteToSakeImage: true,
         });
 
-        console.log('✅ Scan record saved to Supabase');
+        console.log(
+          '✅ Scan record saved to Supabase',
+          scanRow?.scanned_image_url
+            ? `(image: ${scanRow.scanned_image_url})`
+            : '(no image URL)',
+        );
 
       } catch (error) {
         console.error('Failed to save scan:', error);
