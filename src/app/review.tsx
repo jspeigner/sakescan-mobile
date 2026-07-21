@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { Text, View, Pressable, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { Text, View, Pressable, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Alert } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { Star } from 'lucide-react-native';
 import { useAuth } from '@/lib/auth-context';
 import { useCreateRating, useUpdateRating } from '@/lib/supabase-hooks';
+import { useTheme } from '@/lib/theme-context';
+import { useI18n } from '@/lib/i18n-context';
 
 export default function ReviewModal() {
   const insets = useSafeAreaInsets();
@@ -30,6 +32,8 @@ export default function ReviewModal() {
     Number.isFinite(parsedExisting) && parsedExisting > 0 ? parsedExisting : 0,
   );
   const [review, setReview] = useState(existingReview ?? '');
+  const { colors } = useTheme();
+  const { t } = useI18n();
 
   const { user, isGuest } = useAuth();
   const createRating = useCreateRating();
@@ -79,10 +83,13 @@ export default function ReviewModal() {
       }
 
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.back();
+      Alert.alert(t('common.success'), t('review.submitSuccess'), [
+        { text: t('common.done'), onPress: () => router.back() },
+      ]);
     } catch (error) {
       console.error('Failed to submit review:', error);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert(t('common.error'), 'Failed to submit review. Please try again.');
     }
   };
 
@@ -96,20 +103,20 @@ export default function ReviewModal() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <View
-          className="bg-[#FAFAF8] rounded-t-3xl"
-          style={{ paddingBottom: insets.bottom + 16 }}
+          className="rounded-t-3xl"
+          style={{ backgroundColor: colors.background, paddingBottom: insets.bottom + 16 }}
         >
           {/* Drag Handle */}
           <View className="items-center pt-3 pb-4">
-            <View className="w-10 h-1 rounded-full bg-[#D4D4D4]" />
+            <View className="w-10 h-1 rounded-full" style={{ backgroundColor: colors.border }} />
           </View>
 
           {/* Content */}
           <View className="px-6">
             {/* Title */}
             <Text
-              className="text-[#1a1a1a] mb-6"
-              style={{ fontFamily: 'NotoSerifJP_600SemiBold', fontSize: 24, fontWeight: '600' }}
+              className="mb-6"
+              style={{ fontFamily: 'NotoSerifJP_600SemiBold', fontSize: 24, fontWeight: '600', color: colors.text }}
             >
               {isEditing ? 'Edit review' : 'Rate'} {sakeName} {sakeType}
             </Text>
@@ -118,17 +125,20 @@ export default function ReviewModal() {
             {isGuest && (
               <View
                 className="p-4 rounded-xl mb-6"
-                style={{ backgroundColor: '#FEF3C7' }}
+                style={{ backgroundColor: colors.primaryLight }}
               >
-                <Text className="text-[#92400E] text-sm">
+                <Text className="text-sm" style={{ color: colors.warning }}>
                   Sign in to save your review. Guest reviews are not saved.
                 </Text>
               </View>
             )}
 
             {/* Rating Section */}
-            <Text className="text-[#6B6B6B] text-xs font-semibold tracking-wider mb-3">
-              YOUR RATING
+            <Text
+              className="text-xs font-semibold tracking-wider mb-3"
+              style={{ color: colors.textSecondary }}
+            >
+              {t('review.yourRating')}
             </Text>
             <View className="flex-row mb-8">
               {[1, 2, 3, 4, 5].map((star) => (
@@ -148,26 +158,26 @@ export default function ReviewModal() {
             </View>
 
             {/* Review Section */}
-            <Text className="text-[#1a1a1a] text-base mb-3">
+            <Text className="text-base mb-3" style={{ color: colors.text }}>
               Review
             </Text>
             <View
               className="rounded-2xl mb-8"
               style={{
-                backgroundColor: '#F5F3EE',
+                backgroundColor: colors.surfaceSecondary,
                 borderWidth: 1,
-                borderColor: '#E8E4D9',
+                borderColor: colors.borderLight,
               }}
             >
               <TextInput
                 value={review}
                 onChangeText={setReview}
                 placeholder="What did you think of this sake?"
-                placeholderTextColor="#A0A0A0"
+                placeholderTextColor={colors.textTertiary}
                 multiline
                 numberOfLines={4}
-                className="p-4 text-[#1a1a1a] text-base"
-                style={{ minHeight: 120, textAlignVertical: 'top' }}
+                className="p-4 text-base"
+                style={{ minHeight: 120, textAlignVertical: 'top', color: colors.text }}
               />
             </View>
           </View>
@@ -175,14 +185,14 @@ export default function ReviewModal() {
           {/* Bottom Buttons */}
           <View
             className="flex-row px-6 pt-4"
-            style={{ borderTopWidth: 1, borderTopColor: '#E8E4D9' }}
+            style={{ borderTopWidth: 1, borderTopColor: colors.borderLight }}
           >
             <Pressable
               onPress={handleCancel}
               className="flex-1 items-center py-4"
             >
-              <Text className="text-[#1a1a1a] text-base font-medium">
-                Cancel
+              <Text className="text-base font-medium" style={{ color: colors.text }}>
+                {t('common.cancel')}
               </Text>
             </Pressable>
 
@@ -191,7 +201,7 @@ export default function ReviewModal() {
               disabled={rating === 0 || isPending}
               className="flex-1 ml-3 items-center justify-center py-4 rounded-full"
               style={{
-                backgroundColor: rating > 0 ? '#1a1a1a' : '#D4D4D4',
+                backgroundColor: rating > 0 ? colors.text : colors.border,
               }}
             >
               {isPending ? (
@@ -199,9 +209,9 @@ export default function ReviewModal() {
               ) : (
                 <Text
                   className="text-base font-semibold"
-                  style={{ color: rating > 0 ? '#FFFFFF' : '#8B8B8B' }}
+                  style={{ color: rating > 0 ? colors.background : colors.textTertiary }}
                 >
-                  {isEditing ? 'Save Changes' : 'Submit Review'}
+                  {isEditing ? t('common.save') : t('review.submit')}
                 </Text>
               )}
             </Pressable>

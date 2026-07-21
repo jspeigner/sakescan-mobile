@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Text, View, ScrollView, Pressable, ActivityIndicator } from 'react-native';
 import { Heart, Star, GlassWater } from 'lucide-react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/lib/auth-context';
+import { useTheme } from '@/lib/theme-context';
+import { useI18n } from '@/lib/i18n-context';
 import { useUserRatings, useUserFavorites } from '@/lib/supabase-hooks';
 import { resolveSakeImageUrl } from '@/lib/supabase';
 import { SakeImage } from '@/components/SakeImage';
@@ -14,7 +16,16 @@ type TabType = 'favorites' | 'rated';
 export default function SavedScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<TabType>('favorites');
+  const { colors } = useTheme();
+  const { t } = useI18n();
+  const { tab } = useLocalSearchParams<{ tab?: string }>();
+  const [activeTab, setActiveTab] = useState<TabType>(tab === 'rated' ? 'rated' : 'favorites');
+
+  useEffect(() => {
+    if (tab === 'rated' || tab === 'favorites') {
+      setActiveTab(tab);
+    }
+  }, [tab]);
 
   // Fetch user's favorites
   const { data: userFavorites, isLoading: favoritesLoading } = useUserFavorites(user?.id);
@@ -54,51 +65,51 @@ export default function SavedScreen() {
   const currentSakes = activeTab === 'favorites' ? favoriteSakes : ratedSakes;
 
   return (
-    <View className="flex-1 bg-[#FAFAF8]" style={{ paddingTop: insets.top }}>
+    <View className="flex-1" style={{ backgroundColor: colors.background, paddingTop: insets.top }}>
       {/* Header */}
       <View className="px-5 py-4">
-        <Text style={{ fontFamily: 'NotoSerifJP_600SemiBold', fontSize: 28, fontWeight: '600', color: '#1a1a1a' }}>
-          Saved
+        <Text style={{ fontFamily: 'NotoSerifJP_600SemiBold', fontSize: 28, fontWeight: '600', color: colors.text }}>
+          {t('saved.title')}
         </Text>
-        <Text className="text-[#8B8B8B] text-base mt-1">
-          Your favorite sakes and ratings
+        <Text className="text-base mt-1" style={{ color: colors.textTertiary }}>
+          {t('saved.subtitle')}
         </Text>
       </View>
 
       {/* Tabs */}
-      <View className="flex-row mx-5 mb-4 p-1 rounded-xl" style={{ backgroundColor: '#F0EDE5' }}>
+      <View className="flex-row mx-5 mb-4 p-1 rounded-xl" style={{ backgroundColor: colors.surfaceSecondary }}>
         <Pressable
           onPress={() => handleTabPress('favorites')}
           className="flex-1 flex-row items-center justify-center py-3 rounded-lg"
-          style={{ backgroundColor: activeTab === 'favorites' ? '#FFFFFF' : 'transparent' }}
+          style={{ backgroundColor: activeTab === 'favorites' ? colors.surface : 'transparent' }}
         >
           <Heart
             size={16}
-            color={activeTab === 'favorites' ? '#C9A227' : '#8B8B8B'}
-            fill={activeTab === 'favorites' ? '#C9A227' : 'transparent'}
+            color={activeTab === 'favorites' ? colors.primary : colors.textTertiary}
+            fill={activeTab === 'favorites' ? colors.primary : 'transparent'}
           />
           <Text
             className="ml-2 font-medium"
-            style={{ color: activeTab === 'favorites' ? '#1a1a1a' : '#8B8B8B' }}
+            style={{ color: activeTab === 'favorites' ? colors.text : colors.textTertiary }}
           >
-            Favorites ({favoriteSakes.length})
+            {t('saved.favorites')} ({favoriteSakes.length})
           </Text>
         </Pressable>
         <Pressable
           onPress={() => handleTabPress('rated')}
           className="flex-1 flex-row items-center justify-center py-3 rounded-lg"
-          style={{ backgroundColor: activeTab === 'rated' ? '#FFFFFF' : 'transparent' }}
+          style={{ backgroundColor: activeTab === 'rated' ? colors.surface : 'transparent' }}
         >
           <Star
             size={16}
-            color={activeTab === 'rated' ? '#C9A227' : '#8B8B8B'}
-            fill={activeTab === 'rated' ? '#C9A227' : 'transparent'}
+            color={activeTab === 'rated' ? colors.primary : colors.textTertiary}
+            fill={activeTab === 'rated' ? colors.primary : 'transparent'}
           />
           <Text
             className="ml-2 font-medium"
-            style={{ color: activeTab === 'rated' ? '#1a1a1a' : '#8B8B8B' }}
+            style={{ color: activeTab === 'rated' ? colors.text : colors.textTertiary }}
           >
-            Rated ({ratedSakes.length})
+            {t('saved.rated')} ({ratedSakes.length})
           </Text>
         </Pressable>
       </View>
@@ -110,15 +121,15 @@ export default function SavedScreen() {
       >
         {isLoading ? (
           <View className="items-center py-20">
-            <ActivityIndicator size="large" color="#C9A227" />
+            <ActivityIndicator size="large" color={colors.primary} />
           </View>
         ) : currentSakes.length === 0 ? (
           <View className="flex-1 items-center justify-center py-20 px-5">
-            <GlassWater size={48} color="#C9A227" />
-            <Text className="text-[#1a1a1a] font-semibold text-lg mt-4">
+            <GlassWater size={48} color={colors.primary} />
+            <Text className="font-semibold text-lg mt-4" style={{ color: colors.text }}>
               {activeTab === 'favorites' ? 'No favorites yet' : 'No rated sakes yet'}
             </Text>
-            <Text className="text-[#8B8B8B] text-sm mt-2 text-center">
+            <Text className="text-sm mt-2 text-center" style={{ color: colors.textTertiary }}>
               {activeTab === 'favorites'
                 ? 'Tap the heart icon on any sake to add it to your favorites'
                 : 'Rate and review sakes to track what you\'ve tried'}
@@ -126,7 +137,7 @@ export default function SavedScreen() {
             <Pressable
               onPress={() => router.push('/(tabs)/explore')}
               className="mt-6 px-6 py-3 rounded-full"
-              style={{ backgroundColor: '#C9A227' }}
+              style={{ backgroundColor: colors.primary }}
             >
               <Text className="text-white font-semibold">Explore Sake</Text>
             </Pressable>
@@ -149,23 +160,23 @@ export default function SavedScreen() {
                         {/* Heart Badge */}
                         <View
                           className="absolute top-2 right-2 w-8 h-8 rounded-full items-center justify-center"
-                          style={{ backgroundColor: '#C9A227' }}
+                          style={{ backgroundColor: colors.primary }}
                         >
                           <Heart size={14} color="#FFFFFF" fill="#FFFFFF" />
                         </View>
                       </View>
-                      <Text className="text-[#1a1a1a] font-bold text-sm" numberOfLines={1}>
+                      <Text className="font-bold text-sm" numberOfLines={1} style={{ color: colors.text }}>
                         {sake.name}
                       </Text>
                       <View className="flex-row items-center mt-1">
-                        <Text className="text-[#8B8B8B] text-xs" numberOfLines={1}>
+                        <Text className="text-xs" numberOfLines={1} style={{ color: colors.textTertiary }}>
                           {sake.brewery}
                         </Text>
                         {sake.avgRating > 0 && (
                           <>
-                            <Text className="text-[#8B8B8B] text-xs mx-1">•</Text>
-                            <Star size={10} color="#C9A227" fill="#C9A227" />
-                            <Text className="text-[#8B8B8B] text-xs ml-0.5">
+                            <Text className="text-xs mx-1" style={{ color: colors.textTertiary }}>•</Text>
+                            <Star size={10} color={colors.primary} fill={colors.primary} />
+                            <Text className="text-xs ml-0.5" style={{ color: colors.textTertiary }}>
                               {sake.avgRating.toFixed(1)}
                             </Text>
                           </>
@@ -187,16 +198,16 @@ export default function SavedScreen() {
                         {/* Rating Badge */}
                         <View
                           className="absolute top-2 right-2 flex-row items-center px-2 py-1 rounded-full"
-                          style={{ backgroundColor: '#C9A227' }}
+                          style={{ backgroundColor: colors.primary }}
                         >
                           <Star size={12} color="#FFFFFF" fill="#FFFFFF" />
                           <Text className="text-white text-xs font-bold ml-1">{sake.userRating}</Text>
                         </View>
                       </View>
-                      <Text className="text-[#1a1a1a] font-bold text-sm" numberOfLines={1}>
+                      <Text className="font-bold text-sm" numberOfLines={1} style={{ color: colors.text }}>
                         {sake.name}
                       </Text>
-                      <Text className="text-[#8B8B8B] text-xs" numberOfLines={1}>
+                      <Text className="text-xs" numberOfLines={1} style={{ color: colors.textTertiary }}>
                         {sake.brewery}
                       </Text>
                     </Pressable>

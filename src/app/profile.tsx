@@ -67,8 +67,20 @@ export default function ProfileScreen() {
 
   const userDisplayName = userProfile?.display_name ?? user?.user_metadata?.display_name ?? user?.email?.split('@')[0] ?? 'Guest User';
   const userEmail = user?.email ?? 'No email';
-  // B06: Use avatar from public.users (trigger no longer auto-assigns); show placeholder when null
+  // Use avatar from public.users; show placeholder when null
   const userAvatar = userProfile?.avatar_url ?? null;
+
+  const trimmedEditName = editDisplayName.trim();
+  const hasProfileChanges =
+    trimmedEditName !== (userDisplayName ?? '').trim() ||
+    (editAvatarUrl || '') !== (userAvatar ?? '') ||
+    !!localAvatarUri;
+  const canSaveProfile =
+    !!user?.id &&
+    trimmedEditName.length > 0 &&
+    hasProfileChanges &&
+    !isUploadingAvatar &&
+    !updateProfile.isPending;
 
   const handleScanPress = async (scan: ScanWithSake) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -118,6 +130,7 @@ export default function ProfileScreen() {
       // Sign out the user
       await signOut();
       setShowDeleteModal(false);
+      Alert.alert('Account Deleted', 'Your account has been deleted successfully.');
       router.replace('/welcome');
     } catch (err) {
       console.error('Error deleting account:', err);
@@ -208,10 +221,16 @@ export default function ProfileScreen() {
         bio: editBio.trim(),
       });
 
+      const avatarChanged =
+        !!localAvatarUri || (editAvatarUrl || '') !== (userAvatar ?? '');
       setShowEditProfileModal(false);
       setLocalAvatarUri(null);
       await refreshUser();
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert(
+        t('common.success'),
+        avatarChanged ? t('profile.avatarUpdated') : t('profile.profileUpdated'),
+      );
     } catch (err) {
       console.error('Error updating profile:', err);
       Alert.alert('Error', 'Failed to update profile. Please try again.');
@@ -348,27 +367,40 @@ export default function ProfileScreen() {
             </View>
 
             {/* Stats */}
-            <View className="flex-row mt-5 pt-5" style={{ borderTopWidth: 1, borderTopColor: '#F0EDE5' }}>
-              <View className="flex-1 items-center">
-                <View className="flex-row items-center mb-1">
-                  <Camera size={16} color="#C9A227" />
-                </View>
-                <Text className="text-2xl font-bold text-[#1a1a1a]">{scannedCount}</Text>
-                <Text className="text-xs text-[#8B8B8B] font-medium">SCANNED</Text>
-              </View>
-              <View className="w-px bg-[#F0EDE5]" />
-              <View className="flex-1 items-center">
-                <View className="flex-row items-center mb-1">
-                  <Star size={16} color="#C9A227" />
-                </View>
-                <Text className="text-2xl font-bold text-[#1a1a1a]">{reviewedCount}</Text>
-                <Text className="text-xs text-[#8B8B8B] font-medium">REVIEWED</Text>
-              </View>
-              <View className="w-px bg-[#F0EDE5]" />
+            <View className="flex-row mt-5 pt-5" style={{ borderTopWidth: 1, borderTopColor: colors.border }}>
               <Pressable
                 className="flex-1 items-center"
-                onPress={() => {
+                onPress={async () => {
+                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  router.push('/scan-history');
+                }}
+              >
+                <View className="flex-row items-center mb-1">
+                  <Camera size={16} color={colors.primary} />
+                </View>
+                <Text className="text-2xl font-bold" style={{ color: colors.text }}>{scannedCount}</Text>
+                <Text className="text-xs font-medium" style={{ color: colors.textTertiary }}>{t('profile.scanned')}</Text>
+              </Pressable>
+              <View className="w-px" style={{ backgroundColor: colors.border }} />
+              <Pressable
+                className="flex-1 items-center"
+                onPress={async () => {
+                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  router.push({ pathname: '/(tabs)/discover', params: { tab: 'rated' } });
+                }}
+              >
+                <View className="flex-row items-center mb-1">
+                  <Star size={16} color={colors.primary} />
+                </View>
+                <Text className="text-2xl font-bold" style={{ color: colors.text }}>{reviewedCount}</Text>
+                <Text className="text-xs font-medium" style={{ color: colors.textTertiary }}>{t('profile.reviewed')}</Text>
+              </Pressable>
+              <View className="w-px" style={{ backgroundColor: colors.border }} />
+              <Pressable
+                className="flex-1 items-center"
+                onPress={async () => {
                   if (!user?.id || !isSocialEnabled()) return;
+                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   router.push({
                     pathname: '/user/follows',
                     params: { id: user.id, mode: 'following' },
@@ -376,12 +408,14 @@ export default function ProfileScreen() {
                 }}
               >
                 <View className="flex-row items-center mb-1">
-                  <BookOpen size={16} color="#C9A227" />
+                  <BookOpen size={16} color={colors.primary} />
                 </View>
-                <Text className="text-2xl font-bold text-[#1a1a1a]">
+                <Text className="text-2xl font-bold" style={{ color: colors.text }}>
                   {isSocialEnabled() ? (followCounts?.following ?? 0) : 0}
                 </Text>
-                <Text className="text-xs text-[#8B8B8B] font-medium">FOLLOWING</Text>
+                <Text className="text-xs font-medium" style={{ color: colors.textTertiary }}>
+                  {t('profile.following')}
+                </Text>
               </Pressable>
             </View>
             {isSocialEnabled() && user?.id && !isGuest && (
@@ -813,11 +847,16 @@ export default function ProfileScreen() {
                   <Text className="text-base" style={{ color: colors.textSecondary }}>Cancel</Text>
                 </Pressable>
                 <Text className="text-lg font-bold" style={{ color: colors.text }}>Edit Profile</Text>
-                <Pressable onPress={handleSaveProfile} disabled={updateProfile.isPending}>
+                <Pressable onPress={handleSaveProfile} disabled={!canSaveProfile}>
                   {updateProfile.isPending ? (
                     <ActivityIndicator size="small" color={colors.primary} />
                   ) : (
-                    <Text className="text-base font-semibold" style={{ color: colors.primary }}>Save</Text>
+                    <Text
+                      className="text-base font-semibold"
+                      style={{ color: canSaveProfile ? colors.primary : colors.textTertiary }}
+                    >
+                      {t('common.save')}
+                    </Text>
                   )}
                 </Pressable>
               </View>

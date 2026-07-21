@@ -1,17 +1,30 @@
 import { useState, useEffect } from 'react';
-import { Text, View, ScrollView, Pressable, Switch, Alert } from 'react-native';
+import { Text, View, ScrollView, Pressable, Switch, Alert, Linking, ActivityIndicator } from 'react-native';
 import { ChevronLeft, Eye, EyeOff, MapPin, BarChart3, Share2, Trash2 } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/lib/auth-context';
 import { usePublicProfile, useUpdateActivityPrivacy, isSocialEnabled } from '@/lib/social-hooks';
+import { useTheme } from '@/lib/theme-context';
+import { useI18n } from '@/lib/i18n-context';
+import { useClearUserScans, useClearUserRatings } from '@/lib/supabase-hooks';
+import { useScanHistoryStore } from '@/lib/scan-history-store';
+
+const PRIVACY_POLICY_URL = 'https://sakescan.com/privacy';
 
 export default function PrivacySettingsScreen() {
   const insets = useSafeAreaInsets();
   const { user, isGuest } = useAuth();
   const { data: profile } = usePublicProfile(user?.id);
   const updateActivityPrivacy = useUpdateActivityPrivacy();
+  const { colors } = useTheme();
+  const { t } = useI18n();
+  const clearUserScans = useClearUserScans();
+  const clearUserRatings = useClearUserRatings();
+  const clearLocalHistory = useScanHistoryStore((s) => s.clearHistory);
+  const [isClearingScans, setIsClearingScans] = useState(false);
+  const [isClearingReviews, setIsClearingReviews] = useState(false);
 
   // Privacy settings state
   const [profileVisible, setProfileVisible] = useState(true);
@@ -46,16 +59,27 @@ export default function PrivacySettingsScreen() {
   const handleClearScanHistory = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     Alert.alert(
-      'Clear Scan History',
-      'This will permanently delete all your scan history. This action cannot be undone.',
+      t('privacy.clearScanHistory'),
+      t('privacy.clearScanHistoryConfirm'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Clear',
+          text: t('common.clear'),
           style: 'destructive',
-          onPress: () => {
-            // TODO: Implement clear scan history
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          onPress: async () => {
+            if (!user?.id) return;
+            setIsClearingScans(true);
+            try {
+              await clearUserScans.mutateAsync(user.id);
+              await clearLocalHistory();
+              await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              Alert.alert(t('common.success'), t('privacy.scanHistoryCleared'));
+            } catch (err) {
+              console.error('Failed to clear scan history:', err);
+              Alert.alert(t('common.error'), t('privacy.clearScanHistoryFailed'));
+            } finally {
+              setIsClearingScans(false);
+            }
           },
         },
       ]
@@ -65,16 +89,26 @@ export default function PrivacySettingsScreen() {
   const handleClearReviews = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     Alert.alert(
-      'Clear All Reviews',
-      'This will permanently delete all your reviews and ratings. This action cannot be undone.',
+      t('privacy.clearAllReviews'),
+      t('privacy.clearAllReviewsConfirm'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Clear',
+          text: t('common.clear'),
           style: 'destructive',
-          onPress: () => {
-            // TODO: Implement clear reviews
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          onPress: async () => {
+            if (!user?.id) return;
+            setIsClearingReviews(true);
+            try {
+              await clearUserRatings.mutateAsync(user.id);
+              await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              Alert.alert(t('common.success'), t('privacy.reviewsCleared'));
+            } catch (err) {
+              console.error('Failed to clear reviews:', err);
+              Alert.alert(t('common.error'), t('privacy.clearReviewsFailed'));
+            } finally {
+              setIsClearingReviews(false);
+            }
           },
         },
       ]
@@ -84,33 +118,48 @@ export default function PrivacySettingsScreen() {
   const handleDownloadData = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     Alert.alert(
-      'Download Your Data',
-      'We will prepare a copy of your data and send it to your email address. This may take up to 24 hours.',
+      t('privacy.downloadData'),
+      t('privacy.downloadDataBody'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Request',
+          text: t('privacy.request'),
           onPress: () => {
-            // TODO: Implement data download request
-            Alert.alert('Request Sent', 'You will receive an email with your data within 24 hours.');
+            Alert.alert(t('privacy.requestSent'), t('privacy.requestSentBody'));
           },
         },
       ]
     );
   };
 
+  const handleOpenPrivacyPolicy = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      await Linking.openURL(PRIVACY_POLICY_URL);
+    } catch (err) {
+      console.error('Failed to open privacy policy:', err);
+      Alert.alert(t('common.error'), t('privacy.openPolicyFailed'));
+    }
+  };
+
   return (
-    <View className="flex-1 bg-[#FAFAF8]" style={{ paddingTop: insets.top }}>
+    <View className="flex-1" style={{ backgroundColor: colors.background, paddingTop: insets.top }}>
       {/* Header */}
-      <View className="flex-row items-center px-4 py-3 border-b border-[#F0EDE5]">
+      <View
+        className="flex-row items-center px-4 py-3"
+        style={{ borderBottomWidth: 1, borderBottomColor: colors.border }}
+      >
         <Pressable
           onPress={() => router.back()}
           className="w-10 h-10 items-center justify-center -ml-2"
         >
-          <ChevronLeft size={24} color="#1a1a1a" />
+          <ChevronLeft size={24} color={colors.text} />
         </Pressable>
-        <Text className="flex-1 text-lg font-bold text-[#1a1a1a] text-center mr-8">
-          Privacy Settings
+        <Text
+          className="flex-1 text-lg font-bold text-center mr-8"
+          style={{ color: colors.text }}
+        >
+          {t('privacy.title')}
         </Text>
       </View>
 
@@ -121,65 +170,66 @@ export default function PrivacySettingsScreen() {
       >
         {/* Profile Privacy Section */}
         <View className="mx-5 mt-6 mb-6">
-          <Text className="text-sm font-semibold text-[#8B8B8B] tracking-wider mb-3">
-            PROFILE PRIVACY
+          <Text
+            className="text-sm font-semibold tracking-wider mb-3"
+            style={{ color: colors.textTertiary }}
+          >
+            {t('privacy.profilePrivacy')}
           </Text>
 
           <View
             className="rounded-2xl overflow-hidden"
-            style={{ backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#F0EDE5' }}
+            style={{ backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}
           >
-            {/* Public Profile */}
             <View
               className="flex-row items-center p-4"
-              style={{ borderBottomWidth: 1, borderBottomColor: '#F0EDE5' }}
+              style={{ borderBottomWidth: 1, borderBottomColor: colors.border }}
             >
               <View
                 className="w-10 h-10 rounded-full items-center justify-center"
-                style={{ backgroundColor: '#E0E7FF' }}
+                style={{ backgroundColor: colors.primaryLight }}
               >
                 {profileVisible ? (
-                  <Eye size={20} color="#6366F1" />
+                  <Eye size={20} color={colors.primary} />
                 ) : (
-                  <EyeOff size={20} color="#6366F1" />
+                  <EyeOff size={20} color={colors.primary} />
                 )}
               </View>
               <View className="flex-1 ml-3">
-                <Text className="text-[#1a1a1a] text-base font-medium">
-                  Public Profile
+                <Text className="text-base font-medium" style={{ color: colors.text }}>
+                  {t('privacy.publicProfile')}
                 </Text>
-                <Text className="text-[#8B8B8B] text-xs mt-0.5">
-                  Others can see your profile and reviews
+                <Text className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>
+                  {t('privacy.publicProfileHint')}
                 </Text>
               </View>
               <Switch
                 value={profileVisible}
                 onValueChange={(v) => handleToggle(setProfileVisible, v)}
-                trackColor={{ false: '#E5E5E5', true: '#C9A227' }}
+                trackColor={{ false: colors.border, true: colors.primary }}
                 thumbColor="#FFFFFF"
               />
             </View>
 
-            {/* Show Activity */}
             <View className="flex-row items-center p-4">
               <View
                 className="w-10 h-10 rounded-full items-center justify-center"
-                style={{ backgroundColor: '#DCFCE7' }}
+                style={{ backgroundColor: colors.primaryLight }}
               >
-                <BarChart3 size={20} color="#16A34A" />
+                <BarChart3 size={20} color={colors.primary} />
               </View>
               <View className="flex-1 ml-3">
-                <Text className="text-[#1a1a1a] text-base font-medium">
-                  Show Activity
+                <Text className="text-base font-medium" style={{ color: colors.text }}>
+                  {t('privacy.showActivity')}
                 </Text>
-                <Text className="text-[#8B8B8B] text-xs mt-0.5">
-                  Display your scanning and review activity
+                <Text className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>
+                  {t('privacy.showActivityHint')}
                 </Text>
               </View>
               <Switch
                 value={showActivity}
                 onValueChange={handleActivityToggle}
-                trackColor={{ false: '#E5E5E5', true: '#C9A227' }}
+                trackColor={{ false: colors.border, true: colors.primary }}
                 thumbColor="#FFFFFF"
               />
             </View>
@@ -188,88 +238,88 @@ export default function PrivacySettingsScreen() {
 
         {/* Data Collection Section */}
         <View className="mx-5 mb-6">
-          <Text className="text-sm font-semibold text-[#8B8B8B] tracking-wider mb-3">
-            DATA COLLECTION
+          <Text
+            className="text-sm font-semibold tracking-wider mb-3"
+            style={{ color: colors.textTertiary }}
+          >
+            {t('privacy.dataCollection')}
           </Text>
 
           <View
             className="rounded-2xl overflow-hidden"
-            style={{ backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#F0EDE5' }}
+            style={{ backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}
           >
-            {/* Location Sharing */}
             <View
               className="flex-row items-center p-4"
-              style={{ borderBottomWidth: 1, borderBottomColor: '#F0EDE5' }}
+              style={{ borderBottomWidth: 1, borderBottomColor: colors.border }}
             >
               <View
                 className="w-10 h-10 rounded-full items-center justify-center"
-                style={{ backgroundColor: '#FEF3C7' }}
+                style={{ backgroundColor: colors.primaryLight }}
               >
-                <MapPin size={20} color="#D97706" />
+                <MapPin size={20} color={colors.primary} />
               </View>
               <View className="flex-1 ml-3">
-                <Text className="text-[#1a1a1a] text-base font-medium">
-                  Location Data
+                <Text className="text-base font-medium" style={{ color: colors.text }}>
+                  {t('privacy.locationData')}
                 </Text>
-                <Text className="text-[#8B8B8B] text-xs mt-0.5">
-                  Share location when scanning for nearby sake
+                <Text className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>
+                  {t('privacy.locationDataHint')}
                 </Text>
               </View>
               <Switch
                 value={shareLocation}
                 onValueChange={(v) => handleToggle(setShareLocation, v)}
-                trackColor={{ false: '#E5E5E5', true: '#C9A227' }}
+                trackColor={{ false: colors.border, true: colors.primary }}
                 thumbColor="#FFFFFF"
               />
             </View>
 
-            {/* Analytics */}
             <View
               className="flex-row items-center p-4"
-              style={{ borderBottomWidth: 1, borderBottomColor: '#F0EDE5' }}
+              style={{ borderBottomWidth: 1, borderBottomColor: colors.border }}
             >
               <View
                 className="w-10 h-10 rounded-full items-center justify-center"
-                style={{ backgroundColor: '#F5EED9' }}
+                style={{ backgroundColor: colors.primaryLight }}
               >
-                <BarChart3 size={20} color="#C9A227" />
+                <BarChart3 size={20} color={colors.primary} />
               </View>
               <View className="flex-1 ml-3">
-                <Text className="text-[#1a1a1a] text-base font-medium">
-                  Usage Analytics
+                <Text className="text-base font-medium" style={{ color: colors.text }}>
+                  {t('privacy.usageAnalytics')}
                 </Text>
-                <Text className="text-[#8B8B8B] text-xs mt-0.5">
-                  Help improve the app with anonymous usage data
+                <Text className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>
+                  {t('privacy.usageAnalyticsHint')}
                 </Text>
               </View>
               <Switch
                 value={analyticsEnabled}
                 onValueChange={(v) => handleToggle(setAnalyticsEnabled, v)}
-                trackColor={{ false: '#E5E5E5', true: '#C9A227' }}
+                trackColor={{ false: colors.border, true: colors.primary }}
                 thumbColor="#FFFFFF"
               />
             </View>
 
-            {/* Personalized Content */}
             <View className="flex-row items-center p-4">
               <View
                 className="w-10 h-10 rounded-full items-center justify-center"
-                style={{ backgroundColor: '#FCE7F3' }}
+                style={{ backgroundColor: colors.primaryLight }}
               >
-                <Share2 size={20} color="#DB2777" />
+                <Share2 size={20} color={colors.primary} />
               </View>
               <View className="flex-1 ml-3">
-                <Text className="text-[#1a1a1a] text-base font-medium">
-                  Personalized Recommendations
+                <Text className="text-base font-medium" style={{ color: colors.text }}>
+                  {t('privacy.personalized')}
                 </Text>
-                <Text className="text-[#8B8B8B] text-xs mt-0.5">
-                  Get sake suggestions based on your preferences
+                <Text className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>
+                  {t('privacy.personalizedHint')}
                 </Text>
               </View>
               <Switch
                 value={personalizedAds}
                 onValueChange={(v) => handleToggle(setPersonalizedAds, v)}
-                trackColor={{ false: '#E5E5E5', true: '#C9A227' }}
+                trackColor={{ false: colors.border, true: colors.primary }}
                 thumbColor="#FFFFFF"
               />
             </View>
@@ -279,75 +329,85 @@ export default function PrivacySettingsScreen() {
         {/* Your Data Section */}
         {!isGuest && (
           <View className="mx-5 mb-6">
-            <Text className="text-sm font-semibold text-[#8B8B8B] tracking-wider mb-3">
-              YOUR DATA
+            <Text
+              className="text-sm font-semibold tracking-wider mb-3"
+              style={{ color: colors.textTertiary }}
+            >
+              {t('privacy.yourData')}
             </Text>
 
             <View
               className="rounded-2xl overflow-hidden"
-              style={{ backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#F0EDE5' }}
+              style={{ backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}
             >
-              {/* Download Data */}
               <Pressable
                 className="flex-row items-center p-4"
-                style={{ borderBottomWidth: 1, borderBottomColor: '#F0EDE5' }}
+                style={{ borderBottomWidth: 1, borderBottomColor: colors.border }}
                 onPress={handleDownloadData}
               >
                 <View
                   className="w-10 h-10 rounded-full items-center justify-center"
-                  style={{ backgroundColor: '#E0E7FF' }}
+                  style={{ backgroundColor: colors.primaryLight }}
                 >
-                  <Share2 size={20} color="#6366F1" />
+                  <Share2 size={20} color={colors.primary} />
                 </View>
                 <View className="flex-1 ml-3">
-                  <Text className="text-[#1a1a1a] text-base font-medium">
-                    Download My Data
+                  <Text className="text-base font-medium" style={{ color: colors.text }}>
+                    {t('privacy.downloadMyData')}
                   </Text>
-                  <Text className="text-[#8B8B8B] text-xs mt-0.5">
-                    Get a copy of all your data
+                  <Text className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>
+                    {t('privacy.downloadMyDataHint')}
                   </Text>
                 </View>
               </Pressable>
 
-              {/* Clear Scan History */}
               <Pressable
                 className="flex-row items-center p-4"
-                style={{ borderBottomWidth: 1, borderBottomColor: '#F0EDE5' }}
+                style={{ borderBottomWidth: 1, borderBottomColor: colors.border }}
                 onPress={handleClearScanHistory}
+                disabled={isClearingScans}
               >
                 <View
                   className="w-10 h-10 rounded-full items-center justify-center"
-                  style={{ backgroundColor: '#FEF3F2' }}
+                  style={{ backgroundColor: colors.redLight }}
                 >
-                  <Trash2 size={20} color="#EF4444" />
+                  {isClearingScans ? (
+                    <ActivityIndicator size="small" color={colors.error} />
+                  ) : (
+                    <Trash2 size={20} color={colors.error} />
+                  )}
                 </View>
                 <View className="flex-1 ml-3">
-                  <Text className="text-[#EF4444] text-base font-medium">
-                    Clear Scan History
+                  <Text className="text-base font-medium" style={{ color: colors.error }}>
+                    {t('privacy.clearScanHistory')}
                   </Text>
-                  <Text className="text-[#8B8B8B] text-xs mt-0.5">
-                    Delete all your scanned sake records
+                  <Text className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>
+                    {t('privacy.clearScanHistoryHint')}
                   </Text>
                 </View>
               </Pressable>
 
-              {/* Clear Reviews */}
               <Pressable
                 className="flex-row items-center p-4"
                 onPress={handleClearReviews}
+                disabled={isClearingReviews}
               >
                 <View
                   className="w-10 h-10 rounded-full items-center justify-center"
-                  style={{ backgroundColor: '#FEF3F2' }}
+                  style={{ backgroundColor: colors.redLight }}
                 >
-                  <Trash2 size={20} color="#EF4444" />
+                  {isClearingReviews ? (
+                    <ActivityIndicator size="small" color={colors.error} />
+                  ) : (
+                    <Trash2 size={20} color={colors.error} />
+                  )}
                 </View>
                 <View className="flex-1 ml-3">
-                  <Text className="text-[#EF4444] text-base font-medium">
-                    Clear All Reviews
+                  <Text className="text-base font-medium" style={{ color: colors.error }}>
+                    {t('privacy.clearAllReviews')}
                   </Text>
-                  <Text className="text-[#8B8B8B] text-xs mt-0.5">
-                    Delete all your reviews and ratings
+                  <Text className="text-xs mt-0.5" style={{ color: colors.textTertiary }}>
+                    {t('privacy.clearAllReviewsHint')}
                   </Text>
                 </View>
               </Pressable>
@@ -357,13 +417,15 @@ export default function PrivacySettingsScreen() {
 
         {/* Info Text */}
         <View className="mx-5 mt-2">
-          <Text className="text-[#8B8B8B] text-xs text-center leading-5">
-            Your privacy is important to us. We only collect data necessary to provide and improve our services.
-            For more information, please review our Privacy Policy.
+          <Text
+            className="text-xs text-center leading-5"
+            style={{ color: colors.textTertiary }}
+          >
+            {t('privacy.footer')}
           </Text>
-          <Pressable className="mt-3 items-center">
-            <Text className="text-[#C9A227] text-sm font-medium">
-              View Privacy Policy
+          <Pressable className="mt-3 items-center" onPress={handleOpenPrivacyPolicy}>
+            <Text className="text-sm font-medium" style={{ color: colors.primary }}>
+              {t('privacy.viewPolicy')}
             </Text>
           </Pressable>
         </View>

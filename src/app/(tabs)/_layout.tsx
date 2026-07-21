@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme-context';
 import { useAuth } from '@/lib/auth-context';
 import { useGuestUsageStore, FREE_SCAN_LIMIT } from '@/lib/guest-usage-store';
+import { useI18n } from '@/lib/i18n-context';
 
 function CameraTabButton() {
   const { colors } = useTheme();
@@ -63,6 +64,7 @@ function CameraTabButton() {
 
 export default function TabLayout() {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const tabBarHeight = 56 + Math.max(insets.bottom, 10);
 
@@ -112,14 +114,14 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'HOME',
+          title: t('common.home').toUpperCase(),
           tabBarIcon: ({ color }: { color: string }) => <Home size={22} color={color} />,
         }}
       />
       <Tabs.Screen
         name="explore"
         options={{
-          title: 'EXPLORE',
+          title: t('common.explore').toUpperCase(),
           tabBarIcon: ({ color }: { color: string }) => <Compass size={22} color={color} />,
         }}
       />
@@ -138,14 +140,14 @@ export default function TabLayout() {
       <Tabs.Screen
         name="discover"
         options={{
-          title: 'SAVED',
+          title: t('common.saved').toUpperCase(),
           tabBarIcon: ({ color }: { color: string }) => <Heart size={22} color={color} />,
         }}
       />
       <Tabs.Screen
         name="breweries"
         options={{
-          title: 'BREWERIES',
+          title: t('common.breweries').toUpperCase(),
           tabBarIcon: ({ color }: { color: string }) => <Building2 size={22} color={color} />,
         }}
       />

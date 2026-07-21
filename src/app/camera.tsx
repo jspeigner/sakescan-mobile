@@ -24,6 +24,7 @@ import { useGuestUsageStore } from '@/lib/guest-usage-store';
 import { useUserFavorites, useUserRatings, useMenuScanQuota } from '@/lib/supabase-hooks';
 import { useSubscription } from '@/lib/subscription-context';
 import { FREE_MENU_SCANS_PER_MONTH } from '@/lib/purchases';
+import { useI18n } from '@/lib/i18n-context';
 
 type ScanMode = 'label' | 'menu';
 
@@ -138,6 +139,7 @@ function inferMenuPreferences(
 
 export default function CameraScreen() {
   const insets = useSafeAreaInsets();
+  const { t } = useI18n();
   const [facing] = useState<CameraType>('back');
   const [permission, requestPermission] = useCameraPermissions();
   const [isScanning, setIsScanning] = useState(false);
@@ -150,6 +152,7 @@ export default function CameraScreen() {
   const [prefsOverride, setPrefsOverride] = useState<MenuPreferences | null>(null);
   const [draftFlavors, setDraftFlavors] = useState<string[]>([]);
   const [draftBudget, setDraftBudget] = useState<MenuPreferences['budgetBias']>('balanced');
+  const [showInfoModal, setShowInfoModal] = useState(false);
   const cameraRef = useRef<CameraView>(null);
   const { isGuest, session, user } = useAuth();
   const { isPro } = useSubscription();
@@ -535,7 +538,15 @@ export default function CameraScreen() {
                 ? 'Scan Sake Menu'
                 : 'Scan Sake Label'}
           </Text>
-          <Pressable style={styles.headerButton}>
+          <Pressable
+            style={styles.headerButton}
+            onPress={async () => {
+              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setShowInfoModal(true);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={t('camera.infoTitle')}
+          >
             <Info size={22} color="#FFFFFF" />
           </Pressable>
         </BlurView>
@@ -793,6 +804,32 @@ export default function CameraScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <Modal
+        visible={showInfoModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowInfoModal(false)}
+      >
+        <View style={styles.infoModalRoot}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowInfoModal(false)} />
+          <View style={styles.infoModalCard}>
+            <Text style={styles.infoModalTitle}>{t('camera.infoTitle')}</Text>
+            <Text style={styles.infoModalBody}>
+              {scanMode === 'menu' ? t('camera.infoMenu') : t('camera.infoLabel')}
+            </Text>
+            <Pressable
+              style={styles.infoModalButton}
+              onPress={async () => {
+                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setShowInfoModal(false);
+              }}
+            >
+              <Text style={styles.infoModalButtonText}>{t('camera.gotIt')}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -801,6 +838,42 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
+  },
+  infoModalRoot: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+  },
+  infoModalCard: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 20,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: '#333333',
+  },
+  infoModalTitle: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  infoModalBody: {
+    color: '#B5B5B5',
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 20,
+  },
+  infoModalButton: {
+    backgroundColor: '#C9A227',
+    borderRadius: 24,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  infoModalButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,

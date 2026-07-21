@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
+import * as Crypto from 'expo-crypto';
 import { supabase, ensureUserExists } from './supabase';
 import { getAuthEmailRedirectUri, getOAuthRedirectUri } from './app-linking';
 import type { Session, User } from '@supabase/supabase-js';
@@ -153,11 +154,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     try {
       console.log('[Auth] Starting Apple Sign In...');
+      // Raw nonce for Supabase; hashed nonce for Apple (recommended by Supabase Apple docs)
+      const rawNonce = Crypto.randomUUID();
+      const hashedNonce = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        rawNonce,
+      );
+
       const credential = await AppleAuthentication.signInAsync({
         requestedScopes: [
           AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
           AppleAuthentication.AppleAuthenticationScope.EMAIL,
         ],
+        nonce: hashedNonce,
       });
 
       console.log('[Auth] Apple credential received:', !!credential.identityToken);
@@ -171,11 +180,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data, error } = await supabase.auth.signInWithIdToken({
         provider: 'apple',
         token: credential.identityToken,
+        nonce: rawNonce,
       });
 
       console.log('[Auth] Supabase response:', { data: !!data, error: error?.message });
 
       if (error) throw error;
+
+      if (data.user) {
+        try {
+          const email = data.user.email ?? `${data.user.id}@privaterelay.appleid.com`;
+          await ensureUserExists(data.user.id, email);
+        } catch (userError) {
+          console.error('[Auth] Failed to ensure Apple user exists:', userError);
+        }
+      }
 
       // Update user metadata with full name if provided (Apple only sends this on first sign-in)
       if (credential.fullName?.givenName || credential.fullName?.familyName) {

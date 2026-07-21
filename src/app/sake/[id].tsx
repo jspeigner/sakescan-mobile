@@ -294,8 +294,12 @@ export default function SakeDetailScreen() {
         className="absolute top-0 left-0 right-0 z-10 flex-row items-center justify-between px-5 py-3"
         style={{ paddingTop: insets.top + 8, backgroundColor: 'transparent' }}
       >
-        <Pressable onPress={() => router.back()} className="p-1">
-          <ChevronLeft size={24} color={colors.text} />
+        <Pressable
+          onPress={() => router.back()}
+          className="w-10 h-10 rounded-full items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
+        >
+          <ChevronLeft size={24} color="#FFFFFF" />
         </Pressable>
         <Text className="text-lg font-semibold" style={{ color: colors.text }}>Sake Details</Text>
         <Pressable
@@ -303,9 +307,12 @@ export default function SakeDetailScreen() {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             setShowMoreMenu(true);
           }}
-          className="p-1"
+          className="w-10 h-10 rounded-full items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
+          accessibilityRole="button"
+          accessibilityLabel="More options"
         >
-          <MoreHorizontal size={22} color={colors.text} />
+          <MoreHorizontal size={22} color="#FFFFFF" />
         </Pressable>
       </View>
 

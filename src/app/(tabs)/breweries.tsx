@@ -19,6 +19,8 @@ import {
 } from '@/lib/supabase-hooks';
 import { resolveSakeImageUrl } from '@/lib/supabase';
 import type { BreweryCatalogRow } from '@/lib/database.types';
+import { useTheme } from '@/lib/theme-context';
+import { useI18n } from '@/lib/i18n-context';
 
 type BreweryDisplay = {
   name: string;
@@ -45,6 +47,8 @@ function mapRowToDisplay(row: BreweryCatalogRow): BreweryDisplay {
 
 export default function BreweriesScreen() {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+  const { t } = useI18n();
 
   const {
     data,
@@ -85,23 +89,23 @@ export default function BreweriesScreen() {
       >
         <View
           className="flex-row p-3 rounded-2xl"
-          style={{ backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#F0EDE5' }}
+          style={{ backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}
         >
           <View style={{ width: 64, height: 64, borderRadius: 12, overflow: 'hidden' }}>
             <SakeImage uri={brewery.displayImageUrl} height={64} />
           </View>
           <View className="flex-1 ml-3 justify-center">
-            <Text className="text-[#1a1a1a] font-bold text-base">{brewery.name}</Text>
-            <Text className="text-[#C9A227] text-sm">{brewery.region}</Text>
+            <Text className="font-bold text-base" style={{ color: colors.text }}>{brewery.name}</Text>
+            <Text className="text-sm" style={{ color: colors.primary }}>{brewery.region}</Text>
             <View className="flex-row items-center mt-1">
               {brewery.avgRating > 0 && (
                 <>
-                  <Star size={12} fill="#C9A227" color="#C9A227" />
-                  <Text className="text-[#1a1a1a] text-xs ml-1">{brewery.avgRating.toFixed(1)}</Text>
-                  <Text className="text-[#8B8B8B] text-xs ml-2">•</Text>
+                  <Star size={12} fill={colors.primary} color={colors.primary} />
+                  <Text className="text-xs ml-1" style={{ color: colors.text }}>{brewery.avgRating.toFixed(1)}</Text>
+                  <Text className="text-xs ml-2" style={{ color: colors.textTertiary }}>•</Text>
                 </>
               )}
-              <Text className="text-[#8B8B8B] text-xs ml-2">
+              <Text className="text-xs ml-2" style={{ color: colors.textTertiary }}>
                 {brewery.sakeCount} sake{brewery.sakeCount !== 1 ? 's' : ''}
               </Text>
             </View>
@@ -109,7 +113,7 @@ export default function BreweriesScreen() {
         </View>
       </Pressable>
     ),
-    [handleBreweryPress],
+    [handleBreweryPress, colors],
   );
 
   const listHeader = useMemo(
@@ -117,7 +121,7 @@ export default function BreweriesScreen() {
       <View>
         {featuredBrewery ? (
           <View className="px-5 mb-6">
-            <Text className="text-sm font-semibold text-[#8B8B8B] tracking-wider mb-3">
+            <Text className="text-sm font-semibold tracking-wider mb-3" style={{ color: colors.textTertiary }}>
               FEATURED
             </Text>
             <Pressable
@@ -126,13 +130,13 @@ export default function BreweriesScreen() {
             >
               <View className="rounded-2xl overflow-hidden">
                 <SakeImage uri={featuredBrewery.displayImageUrl} height={176} />
-                <View className="p-4" style={{ backgroundColor: '#F5EED9' }}>
-                  <Text className="text-xl font-bold text-[#1a1a1a]">{featuredBrewery.name}</Text>
+                <View className="p-4" style={{ backgroundColor: colors.primaryLight }}>
+                  <Text className="text-xl font-bold" style={{ color: colors.text }}>{featuredBrewery.name}</Text>
                   <View className="flex-row items-center mt-1">
-                    <MapPin size={14} color="#C9A227" />
-                    <Text className="text-[#C9A227] text-sm ml-1">{featuredBrewery.region}</Text>
+                    <MapPin size={14} color={colors.primary} />
+                    <Text className="text-sm ml-1" style={{ color: colors.primary }}>{featuredBrewery.region}</Text>
                   </View>
-                  <Text className="text-[#6B6B6B] text-sm mt-2">
+                  <Text className="text-sm mt-2" style={{ color: colors.textSecondary }}>
                     {featuredBrewery.sakeCount} sake{featuredBrewery.sakeCount !== 1 ? 's' : ''} in
                     collection
                   </Text>
@@ -144,28 +148,28 @@ export default function BreweriesScreen() {
 
         {listData.length > 0 ? (
           <View className="px-5 mb-3">
-            <Text className="text-sm font-semibold text-[#8B8B8B] tracking-wider">ALL BREWERIES</Text>
+            <Text className="text-sm font-semibold tracking-wider" style={{ color: colors.textTertiary }}>ALL BREWERIES</Text>
           </View>
         ) : null}
       </View>
     ),
-    [featuredBrewery, listData.length, handleBreweryPress],
+    [featuredBrewery, listData.length, handleBreweryPress, colors],
   );
 
   if (isPending && flatRows.length === 0) {
     return (
-      <View className="flex-1 bg-[#FAFAF8]" style={{ paddingTop: insets.top }}>
+      <View className="flex-1" style={{ backgroundColor: colors.background, paddingTop: insets.top }}>
         <View className="px-5 py-4">
-          <Text style={{ fontFamily: 'NotoSerifJP_600SemiBold', fontSize: 28, fontWeight: '600', color: '#1a1a1a' }}>
-            Breweries
+          <Text style={{ fontFamily: 'NotoSerifJP_600SemiBold', fontSize: 28, fontWeight: '600', color: colors.text }}>
+            {t('common.breweries')}
           </Text>
-          <Text className="text-[#8B8B8B] text-base mt-1">
+          <Text className="text-base mt-1" style={{ color: colors.textTertiary }}>
             Discover Japan's finest sake producers
           </Text>
         </View>
         <View className="items-center py-20">
-          <ActivityIndicator size="large" color="#C9A227" />
-          <Text className="text-[#8B8B8B] mt-4">Loading breweries...</Text>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text className="mt-4" style={{ color: colors.textTertiary }}>Loading breweries...</Text>
         </View>
       </View>
     );
@@ -173,29 +177,29 @@ export default function BreweriesScreen() {
 
   if (isError) {
     return (
-      <View className="flex-1 bg-[#FAFAF8]" style={{ paddingTop: insets.top }}>
+      <View className="flex-1" style={{ backgroundColor: colors.background, paddingTop: insets.top }}>
         <View className="px-5 py-4">
-          <Text style={{ fontFamily: 'NotoSerifJP_600SemiBold', fontSize: 28, fontWeight: '600', color: '#1a1a1a' }}>
-            Breweries
+          <Text style={{ fontFamily: 'NotoSerifJP_600SemiBold', fontSize: 28, fontWeight: '600', color: colors.text }}>
+            {t('common.breweries')}
           </Text>
         </View>
         <View className="items-center py-16 px-6">
-          <Building2 size={48} color="#C9A227" />
-          <Text className="text-[#1a1a1a] font-semibold text-lg mt-4 text-center">
+          <Building2 size={48} color={colors.primary} />
+          <Text className="font-semibold text-lg mt-4 text-center" style={{ color: colors.text }}>
             Couldn't load breweries
           </Text>
-          <Text className="text-[#8B8B8B] text-center mt-2 text-sm">
+          <Text className="text-center mt-2 text-sm" style={{ color: colors.textTertiary }}>
             {error instanceof Error ? error.message : 'Check your connection and try again.'}
           </Text>
-          <Text className="text-[#8B8B8B] text-center mt-3 text-xs px-2">
+          <Text className="text-center mt-3 text-xs px-2" style={{ color: colors.textTertiary }}>
             If this is the first time, run{' '}
-            <Text className="font-mono text-[#6B6B6B]">supabase db push</Text> so the catalog
+            <Text className="font-mono" style={{ color: colors.textSecondary }}>supabase db push</Text> so the catalog
             function exists.
           </Text>
           <Pressable
             onPress={() => void refetch()}
             className="mt-6 px-6 py-3 rounded-full"
-            style={{ backgroundColor: '#C9A227' }}
+            style={{ backgroundColor: colors.primary }}
           >
             <Text className="text-white font-semibold">Try again</Text>
           </Pressable>
@@ -205,16 +209,16 @@ export default function BreweriesScreen() {
   }
 
   return (
-    <View className="flex-1 bg-[#FAFAF8]" style={{ paddingTop: insets.top }}>
+    <View className="flex-1" style={{ backgroundColor: colors.background, paddingTop: insets.top }}>
       <View className="px-5 py-4">
-        <Text style={{ fontFamily: 'NotoSerifJP_600SemiBold', fontSize: 28, fontWeight: '600', color: '#1a1a1a' }}>
-          Breweries
+        <Text style={{ fontFamily: 'NotoSerifJP_600SemiBold', fontSize: 28, fontWeight: '600', color: colors.text }}>
+          {t('common.breweries')}
         </Text>
-        <Text className="text-[#8B8B8B] text-base mt-1">
+        <Text className="text-base mt-1" style={{ color: colors.textTertiary }}>
           Discover Japan's finest sake producers
         </Text>
         {flatRows.length > 0 && (
-          <Text className="text-[#B5B5B5] text-xs mt-2">
+          <Text className="text-xs mt-2" style={{ color: colors.textSecondary }}>
             {flatRows.length}
             {hasNextPage ? '+' : ''} breweries · {BREWERIES_CATALOG_PAGE_SIZE} per page
           </Text>
@@ -233,15 +237,15 @@ export default function BreweriesScreen() {
           <RefreshControl
             refreshing={isFetching && !isFetchingNextPage && flatRows.length > 0}
             onRefresh={() => void refetch()}
-            tintColor="#C9A227"
+            tintColor={colors.primary}
           />
         }
         ListEmptyComponent={
           featuredBrewery ? null : (
             <View className="items-center py-16 px-5">
-              <Building2 size={48} color="#C9A227" />
-              <Text className="text-[#1a1a1a] font-semibold text-lg mt-4">No breweries yet</Text>
-              <Text className="text-[#8B8B8B] text-center mt-2">
+              <Building2 size={48} color={colors.primary} />
+              <Text className="font-semibold text-lg mt-4" style={{ color: colors.text }}>No breweries yet</Text>
+              <Text className="text-center mt-2" style={{ color: colors.textTertiary }}>
                 Add sake to your Supabase catalog to see breweries here.
               </Text>
             </View>
@@ -250,8 +254,8 @@ export default function BreweriesScreen() {
         ListFooterComponent={
           isFetchingNextPage ? (
             <View className="py-6 items-center">
-              <ActivityIndicator size="small" color="#C9A227" />
-              <Text className="text-[#8B8B8B] text-xs mt-2">Loading more…</Text>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text className="text-xs mt-2" style={{ color: colors.textTertiary }}>Loading more…</Text>
             </View>
           ) : null
         }
