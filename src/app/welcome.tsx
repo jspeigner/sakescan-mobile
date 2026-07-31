@@ -102,7 +102,7 @@ function GoogleLogo({ size = 20 }: { size?: number }) {
 export default function WelcomeScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useI18n();
-  const { user, continueAsGuest, signInWithApple, signInWithGoogle, isLoading } = useAuth();
+  const { user, continueAsGuest, signInWithApple, signInWithGoogle, isLoading, isPasswordRecovery } = useAuth();
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isSigningInGoogle, setIsSigningInGoogle] = useState(false);
 
@@ -111,11 +111,12 @@ export default function WelcomeScreen() {
   }, [insets]);
 
   // Watch for successful authentication and navigate to tabs
+  // Skip during password recovery so reset-password is not overridden.
   useEffect(() => {
-    if (user) {
+    if (user && !isPasswordRecovery) {
       router.replace('/(tabs)');
     }
-  }, [user]);
+  }, [user, isPasswordRecovery]);
 
   const handleGetStarted = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);

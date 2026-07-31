@@ -173,17 +173,27 @@ export const ensureUserExists = async (
       return;
     }
 
-    // Backfill display name when Apple provides it on first sign-in
-    if (displayName?.trim() && !existingUser.display_name) {
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({
-          display_name: displayName.trim(),
-          updated_at: new Date().toISOString(),
-        } as Record<string, unknown>)
-        .eq('id', userId);
-      if (updateError) {
-        console.error('[ensureUserExists] Failed to update display name:', updateError);
+    // Backfill Apple / provider name when the row still has a placeholder
+    // (null/empty, email local-part from handle_new_user, or generic "User").
+    if (displayName?.trim()) {
+      const trimmedName = displayName.trim();
+      const emailPrefix = email?.split('@')[0] ?? null;
+      const currentName = existingUser.display_name?.trim() || '';
+      const isPlaceholder =
+        !currentName ||
+        currentName === 'User' ||
+        (emailPrefix !== null && currentName === emailPrefix);
+      if (isPlaceholder && currentName !== trimmedName) {
+        const { error: updateError } = await supabase
+          .from('users')
+          .update({
+            display_name: trimmedName,
+            updated_at: new Date().toISOString(),
+          } as Record<string, unknown>)
+          .eq('id', userId);
+        if (updateError) {
+          console.error('[ensureUserExists] Failed to update display name:', updateError);
+        }
       }
     }
   } catch (error) {

@@ -15,6 +15,8 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   isLoading: boolean;
+  /** True while the session came from a password-recovery link (must finish reset). */
+  isPasswordRecovery: boolean;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signUpWithEmail: (email: string, password: string) => Promise<{ user: User | null; session: Session | null; }>;
   signInWithApple: () => Promise<void>;
@@ -34,6 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isGuest, setIsGuest] = useState(false);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -71,11 +74,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     initAuth();
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (isMounted) {
         setSession(session);
         setUser(session?.user ?? null);
         setIsGuest(false);
+        // PKCE recovery links often arrive as auth/callback?code=… without type=recovery.
+        // Supabase emits PASSWORD_RECOVERY after exchangeCodeForSession / setSession.
+        if (event === 'PASSWORD_RECOVERY') {
+          setIsPasswordRecovery(true);
+        } else if (event === 'SIGNED_OUT') {
+          setIsPasswordRecovery(false);
+        }
       }
     });
 
@@ -141,6 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const updatePassword = async (newPassword: string) => {
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) throw error;
+    setIsPasswordRecovery(false);
   };
 
   const refreshUser = async () => {
@@ -319,6 +330,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     await supabase.auth.signOut();
     setIsGuest(false);
+    setIsPasswordRecovery(false);
     setIsLoading(false);
   };
 
@@ -333,6 +345,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         session,
         isLoading,
+        isPasswordRecovery,
         signInWithEmail,
         signUpWithEmail,
         signInWithApple,

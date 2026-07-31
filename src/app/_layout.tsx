@@ -239,13 +239,20 @@ function SplashOverlay({ ready }: { ready: boolean }) {
 }
 
 function AppContent({ fontsReady }: { fontsReady: boolean }) {
-  const { isLoading } = useAuth();
+  const { isLoading, isPasswordRecovery } = useAuth();
   const { isDarkMode } = useTheme();
   const appReady = fontsReady && !isLoading;
 
   useEffect(() => {
     console.log('[AppContent] isLoading:', isLoading, 'fontsReady:', fontsReady, 'appReady:', appReady);
   }, [isLoading, fontsReady, appReady]);
+
+  // PKCE recovery callbacks often lack type=recovery in the URL; route from the auth event.
+  useEffect(() => {
+    if (isPasswordRecovery) {
+      router.replace('/reset-password');
+    }
+  }, [isPasswordRecovery]);
 
   const navigationScheme = isDarkMode ? 'dark' : 'light';
 

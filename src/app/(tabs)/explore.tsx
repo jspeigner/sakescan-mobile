@@ -323,7 +323,7 @@ export default function ExploreScreen() {
                   <View className="flex-row items-center">
                     <Globe size={20} color={colors.primary} />
                     <Text className="text-lg font-bold ml-2" style={{ color: colors.text }}>
-                      {t('explore.community')}
+                      {isSocialEnabled() ? t('explore.communityFrom') : t('explore.community')}
                     </Text>
                   </View>
                   <View className="px-2 py-1 rounded-full" style={{ backgroundColor: colors.primary + '1A' }}>

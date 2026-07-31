@@ -10,14 +10,15 @@ import { useI18n } from '@/lib/i18n-context';
 export default function AuthScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useI18n();
-  const { user, signInWithEmail, signUpWithEmail, resetPassword } = useAuth();
+  const { user, signInWithEmail, signUpWithEmail, resetPassword, isPasswordRecovery } = useAuth();
   
   // Watch for successful authentication and navigate to tabs
+  // Skip during password recovery so reset-password is not overridden.
   useEffect(() => {
-    if (user) {
+    if (user && !isPasswordRecovery) {
       router.replace('/(tabs)');
     }
-  }, [user]);
+  }, [user, isPasswordRecovery]);
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
