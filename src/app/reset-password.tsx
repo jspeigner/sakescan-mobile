@@ -62,13 +62,15 @@ export default function ResetPasswordScreen() {
 
   const handleBack = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // Abandoning reset: drop the recovery marker (and session) so /auth can route normally.
-    await clearPasswordRecovery();
+    // End the recovery session first; only drop the marker once signed out
+    // so /auth cannot bounce a still-authenticated user into /(tabs).
     try {
       await signOut();
     } catch {
-      // Still leave the reset screen even if sign-out fails.
+      // Keep recovery marker and stay on reset if abandon cannot end the session.
+      return;
     }
+    await clearPasswordRecovery();
     router.replace('/auth');
   };
 

@@ -183,15 +183,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
   };
 
-  const updatePassword = async (newPassword: string) => {
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    if (error) throw error;
-    markPasswordRecovery(false);
-  };
-
   const clearPasswordRecovery = async () => {
     setIsPasswordRecovery(false);
     await persistPasswordRecovery(false);
+  };
+
+  const updatePassword = async (newPassword: string) => {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+    // Await durable clear so a cold start cannot restore a stale recovery flag.
+    await clearPasswordRecovery();
   };
 
   const refreshUser = async () => {
@@ -368,10 +369,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     setIsLoading(true);
-    await supabase.auth.signOut();
-    setIsGuest(false);
-    markPasswordRecovery(false);
-    setIsLoading(false);
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      setIsGuest(false);
+      markPasswordRecovery(false);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const continueAsGuest = () => {
