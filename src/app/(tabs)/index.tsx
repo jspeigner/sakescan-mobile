@@ -19,10 +19,12 @@ import { useUserScans, useSakeList } from '@/lib/supabase-hooks';
 import { resolveSakeImageUrl } from '@/lib/supabase';
 import { SakeImage } from '@/components/SakeImage';
 import { useGuestUsageStore, FREE_SCAN_LIMIT } from '@/lib/guest-usage-store';
+import { useI18n } from '@/lib/i18n-context';
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
+  const { t } = useI18n();
   const { user, session, isGuest } = useAuth();
   const canScanLabel = useGuestUsageStore((s) => s.canScanLabel);
   const remainingFreeScans = useGuestUsageStore((s) => s.remainingFreeScans);
@@ -93,11 +95,11 @@ export default function HomeScreen() {
     if (isGuest && !session?.access_token) {
       if (!canScanLabel()) {
         Alert.alert(
-          'Free Scans Used Up',
-          `You've used all ${FREE_SCAN_LIMIT} free label scans. Create an account to keep scanning and unlock the full menu scanner.`,
+          t('home.freeScansTitle'),
+          t('home.freeScansBody').replace('{{count}}', String(FREE_SCAN_LIMIT)),
           [
-            { text: 'Sign Up', onPress: () => router.push('/welcome') },
-            { text: 'Not Now', style: 'cancel' },
+            { text: t('home.signUp'), onPress: () => router.push('/welcome') },
+            { text: t('home.notNow'), style: 'cancel' },
           ]
         );
         return;
@@ -178,7 +180,7 @@ export default function HomeScreen() {
           >
             <Camera size={42} color="#FFFFFF" strokeWidth={1.5} />
             <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700', letterSpacing: 3, marginTop: 16 }}>
-              SCAN LABEL
+              {t('home.scanLabel')}
             </Text>
           </Pressable>
         </Animated.View>
@@ -186,7 +188,7 @@ export default function HomeScreen() {
         {/* Instructions */}
         <Animated.View style={[{ paddingHorizontal: 32, paddingBottom: 40 }, scanStyle]}>
           <Text style={{ textAlign: 'center', fontSize: 16, lineHeight: 24, color: colors.textSecondary }}>
-            Point your camera at any sake label to{'\n'}learn more about the brewery, profile, and{'\n'}pairings.
+            {t('home.instructions')}
           </Text>
         </Animated.View>
 
@@ -194,7 +196,7 @@ export default function HomeScreen() {
         <Animated.View style={[{ marginTop: 16 }, listStyle]}>
           <View className="flex-row items-center justify-between px-5 mb-4">
             <Text className="text-xl font-bold" style={{ color: colors.text }}>
-              {recentlyScanned.length > 0 ? 'Recently Scanned' : 'Popular Sake'}
+              {recentlyScanned.length > 0 ? t('home.recentlyScanned') : t('home.popularSake')}
             </Text>
             <Pressable
               hitSlop={8}
@@ -208,7 +210,7 @@ export default function HomeScreen() {
               }}
             >
               <Text className="font-semibold" style={{ color: colors.primary }}>
-                See all
+                {t('home.seeAll')}
               </Text>
             </Pressable>
           </View>
@@ -221,10 +223,10 @@ export default function HomeScreen() {
             <View className="items-center py-10 px-5">
               <ScanLine size={48} color={colors.primary} />
               <Text className="font-semibold text-lg mt-4" style={{ color: colors.text }}>
-                No scans yet
+                {t('home.emptyTitle')}
               </Text>
               <Text className="text-center mt-2" style={{ color: colors.textTertiary }}>
-                Start scanning sake labels to build your history
+                {t('home.emptyBody')}
               </Text>
             </View>
           ) : (

@@ -15,15 +15,17 @@
 ### Fix
 
 1. Go to **Authentication** → **URL Configuration**
-2. Under **Redirect URLs**, add every URL your build can emit for auth callbacks. The app uses `expo-linking` **`Linking.createURL('auth/callback')`** (see `getAuthEmailRedirectUri()` in `src/lib/app-linking.ts`) — in dev this may look like `exp://…/--/auth/callback`; in production it matches your `expo.scheme` (e.g. `sakescan://auth/callback`). Add:
-   - `YOUR_SCHEME://**`
-   - `YOUR_SCHEME://reset-password`
-   - `YOUR_SCHEME://auth/callback`
-   - Any exact `exp://…` dev URLs you see when testing password reset (B15)
-3. **Site URL:** Use your production web URL (e.g. `https://sakescan.com`) if you use a web auth callback, or your primary deep-link base if the app is mobile-only. Avoid `localhost:3000` for production mobile flows.
+2. Under **Redirect URLs**, add every URL your build can emit for auth callbacks. Production password reset uses a **stable** custom scheme from `getAuthEmailRedirectUri()` in `src/lib/app-linking.ts` (`sakescan://auth/callback`). Add:
+   - `sakescan://**`
+   - `sakescan://reset-password`
+   - `sakescan://auth/callback`
+   - `https://www.sakescan.com/auth/callback` (web bridge)
+   - Any exact `exp://…` / Expo Go URLs you see when testing reset in development
+3. **Site URL:** Use your production web URL (e.g. `https://www.sakescan.com`). Avoid `localhost:3000` for production mobile flows.
 4. Click **Save**
+5. Confirm Auth emails are sending (Dashboard → Authentication → Users → mail logs / SMTP settings). If the app reports success but no inbox message, this is server-side delivery, not the client request.
 
-**Note:** Reset links expire in 1 hour. If the link is old, request a new one.
+**Note:** Reset links expire in 1 hour. If the link is old, request a new one. The app uses PKCE — deep links may include `?code=` which `_layout.tsx` exchanges via `exchangeCodeForSession`.
 
 ---
 

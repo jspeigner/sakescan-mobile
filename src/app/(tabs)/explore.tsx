@@ -15,6 +15,8 @@ import { useI18n } from '@/lib/i18n-context';
 
 type FilterType = 'All Types' | 'Junmai' | 'Ginjo' | 'Daiginjo' | 'Honjozo';
 
+const FILTER_TYPES: FilterType[] = ['All Types', 'Junmai', 'Ginjo', 'Daiginjo', 'Honjozo'];
+
 // Helper to map Supabase sake to display format
 function mapSupabaseSake(sake: SupabaseSake) {
   return {
@@ -226,7 +228,7 @@ export default function ExploreScreen() {
           contentContainerStyle={{ paddingHorizontal: 20, gap: 8 }}
           style={{ flexGrow: 0, marginBottom: 8 }}
         >
-          {(['All Types', 'Junmai', 'Ginjo', 'Daiginjo', 'Honjozo'] as FilterType[]).map((filter) => (
+          {FILTER_TYPES.map((filter) => (
             <Pressable
               key={filter}
               onPress={() => handleFilterPress(filter)}
@@ -241,7 +243,7 @@ export default function ExploreScreen() {
                 className="text-sm font-medium"
                 style={{ color: activeFilter === filter ? '#FFFFFF' : colors.text }}
               >
-                {filter}
+                {filter === 'All Types' ? t('explore.allTypes') : filter}
               </Text>
             </Pressable>
           ))}
@@ -260,7 +262,7 @@ export default function ExploreScreen() {
         >
           <BookOpen size={14} color="#BC002D" />
           <Text className="ml-1.5 text-xs font-semibold" style={{ color: '#BC002D' }}>
-            What do these types mean?
+            {t('explore.whatTypesMean')}
           </Text>
         </Pressable>
 
@@ -292,7 +294,7 @@ export default function ExploreScreen() {
               style={{ backgroundColor: colors.primary }}
             >
               <RefreshCw size={18} color="#FFFFFF" />
-              <Text className="text-white font-semibold ml-2">{isFetching ? 'Retrying…' : 'Try again'}</Text>
+              <Text className="text-white font-semibold ml-2">{isFetching ? 'Retrying…' : t('explore.tryAgain')}</Text>
             </Pressable>
           </View>
         ) : isLoading ? (
@@ -304,7 +306,7 @@ export default function ExploreScreen() {
           <View className="items-center py-20 px-5">
             <GlassWater size={48} color={colors.primary} />
             <Text className="font-semibold text-lg mt-4" style={{ color: colors.text }}>
-              No sake found
+              {t('explore.noSake')}
             </Text>
             <Text className="text-center mt-2" style={{ color: colors.textTertiary }}>
               {activeFilter !== 'All Types'
@@ -321,7 +323,7 @@ export default function ExploreScreen() {
                   <View className="flex-row items-center">
                     <Globe size={20} color={colors.primary} />
                     <Text className="text-lg font-bold ml-2" style={{ color: colors.text }}>
-                      {isSocialEnabled() ? 'From the community' : 'Community Discoveries'}
+                      {t('explore.community')}
                     </Text>
                   </View>
                   <View className="px-2 py-1 rounded-full" style={{ backgroundColor: colors.primary + '1A' }}>
@@ -389,7 +391,7 @@ export default function ExploreScreen() {
                 <View className="flex-row justify-between items-center mb-4">
                   <View className="flex-row items-center">
                     <Clock size={20} color={colors.primary} />
-                    <Text className="text-lg font-bold ml-2" style={{ color: colors.text }}>Recently Scanned</Text>
+                    <Text className="text-lg font-bold ml-2" style={{ color: colors.text }}>{t('explore.recentlyScanned')}</Text>
                   </View>
                   <Pressable onPress={() => router.push('/scan-history')}>
                     <Text className="font-medium" style={{ color: colors.primary }}>{t('home.seeAll')}</Text>
@@ -437,7 +439,7 @@ export default function ExploreScreen() {
             {trendingSake.length > 0 && (
               <View className="px-5 mb-6">
                 <View className="flex-row justify-between items-center mb-4">
-                  <Text className="text-lg font-bold" style={{ color: colors.text }}>Trending This Week</Text>
+                  <Text className="text-lg font-bold" style={{ color: colors.text }}>{t('explore.trending')}</Text>
                   <Pressable onPress={handleSeeAllCatalog} hitSlop={8}>
                     <Text className="font-medium" style={{ color: colors.primary }}>{t('home.seeAll')}</Text>
                   </Pressable>
@@ -468,7 +470,7 @@ export default function ExploreScreen() {
             {newArrivals.length > 0 && (
               <View className="px-5 mb-6">
                 <View className="flex-row justify-between items-center mb-4">
-                  <Text className="text-lg font-bold" style={{ color: colors.text }}>New Arrivals</Text>
+                  <Text className="text-lg font-bold" style={{ color: colors.text }}>{t('explore.newArrivals')}</Text>
                   <Pressable onPress={handleSeeAllCatalog} hitSlop={8}>
                     <Text className="font-medium" style={{ color: colors.primary }}>{t('home.seeAll')}</Text>
                   </Pressable>
@@ -498,7 +500,7 @@ export default function ExploreScreen() {
             {topRatedNiigata.length > 0 && (
               <View className="px-5 mb-6">
                 <View className="flex-row justify-between items-center mb-4">
-                  <Text className="text-lg font-bold" style={{ color: colors.text }}>Top Rated in Niigata</Text>
+                  <Text className="text-lg font-bold" style={{ color: colors.text }}>{t('explore.topRatedNiigata')}</Text>
                   <Pressable onPress={handleSeeAllNiigata} hitSlop={8}>
                     <Text className="font-medium" style={{ color: colors.primary }}>{t('home.seeAll')}</Text>
                   </Pressable>

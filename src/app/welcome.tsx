@@ -5,6 +5,7 @@ import * as Haptics from 'expo-haptics';
 import Svg, { Path, Circle, Rect, Defs, Pattern, G } from 'react-native-svg';
 import { useAuth } from '@/lib/auth-context';
 import { useState, useEffect } from 'react';
+import { useI18n } from '@/lib/i18n-context';
 
 // Japanese Seigaiha wave pattern component
 function WavePattern() {
@@ -100,6 +101,7 @@ function GoogleLogo({ size = 20 }: { size?: number }) {
 
 export default function WelcomeScreen() {
   const insets = useSafeAreaInsets();
+  const { t } = useI18n();
   const { user, continueAsGuest, signInWithApple, signInWithGoogle, isLoading } = useAuth();
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isSigningInGoogle, setIsSigningInGoogle] = useState(false);
@@ -180,7 +182,7 @@ export default function WelcomeScreen() {
       >
         <Pressable onPress={handleSkip}>
           <Text className="text-[#6B6B6B] text-base font-medium">
-            Skip
+            {t('welcome.skip')}
           </Text>
         </Pressable>
       </View>
@@ -218,7 +220,7 @@ export default function WelcomeScreen() {
           className="text-[#6B6B6B] text-lg mt-3 w-full px-1 text-center"
           style={{ flexShrink: 1 }}
         >
-          Discover sake, one label at a time
+          {t('welcome.tagline')}
         </Text>
       </View>
 
@@ -239,14 +241,14 @@ export default function WelcomeScreen() {
           }}
         >
           <Text className="text-white text-base font-semibold">
-            Sign In with Email
+            {t('welcome.signInEmail')}
           </Text>
         </Pressable>
 
         {/* Divider */}
         <View className="flex-row items-center my-4">
           <View className="flex-1 h-px bg-[#E5E5E5]" />
-          <Text className="mx-3 text-[#8B8B8B] text-sm">or sign in with</Text>
+          <Text className="mx-3 text-[#8B8B8B] text-sm">{t('welcome.orSignInWith')}</Text>
           <View className="flex-1 h-px bg-[#E5E5E5]" />
         </View>
 
@@ -267,7 +269,7 @@ export default function WelcomeScreen() {
         >
           <AppleLogo />
           <Text className="text-[#1a1a1a] text-base font-semibold ml-3">
-            Sign in with Apple
+            {t('welcome.signInApple')}
           </Text>
         </Pressable>
 
@@ -288,13 +290,13 @@ export default function WelcomeScreen() {
         >
           <GoogleLogo />
           <Text className="text-[#1a1a1a] text-base font-semibold ml-3">
-            Sign in with Google
+            {t('welcome.signInGoogle')}
           </Text>
         </Pressable>
 
         <Pressable onPress={handleContinueAsGuest} className="items-center py-2">
           <Text className="text-[#8B8B8B] text-base">
-            Continue as Guest
+            {t('welcome.continueAsGuest')}
           </Text>
         </Pressable>
       </View>

@@ -65,7 +65,7 @@ export default function ProfileScreen() {
   const reviewedCount = ratings?.length ?? 0;
   const unmatchedCount = scans?.filter(s => !s.matched).length ?? 0;
 
-  const userDisplayName = userProfile?.display_name ?? user?.user_metadata?.display_name ?? user?.email?.split('@')[0] ?? 'Guest User';
+  const userDisplayName = userProfile?.display_name ?? user?.user_metadata?.display_name ?? user?.email?.split('@')[0] ?? t('profile.guestUser');
   const userEmail = user?.email ?? 'No email';
   // Use avatar from public.users; show placeholder when null
   const userAvatar = userProfile?.avatar_url ?? null;
@@ -97,12 +97,12 @@ export default function ProfileScreen() {
   const handleLogout = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out?',
+      t('profile.signOutTitle'),
+      t('profile.signOutConfirm'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Sign Out',
+          text: t('profile.signOutTitle'),
           style: 'destructive',
           onPress: async () => {
             await signOut();
@@ -120,21 +120,42 @@ export default function ProfileScreen() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
     try {
-      // Call Supabase Edge Function to delete user data
-      const { error } = await supabase.functions.invoke('delete-user', {
-        body: { user_id: user?.id },
-      });
+      // Prefer DB RPC (deployed) over Edge Function (may be undeployed → 404).
+      const { error: rpcError } = await supabase.rpc('delete_own_account');
 
-      if (error) throw error;
+      if (rpcError) {
+        console.warn('[Profile] delete_own_account RPC failed, trying Edge Function:', rpcError.message);
+        const { data: fnData, error: fnError } = await supabase.functions.invoke('delete-user', {
+          body: { user_id: user?.id },
+        });
+        if (fnError) throw fnError;
+        if (fnData && typeof fnData === 'object' && 'error' in fnData && fnData.error) {
+          throw new Error(String(fnData.error));
+        }
+      }
 
-      // Sign out the user
-      await signOut();
+      // Auth user is already gone — clear local session only (remote signOut would fail).
+      try {
+        await supabase.auth.signOut({ scope: 'local' });
+      } catch (localSignOutError) {
+        console.warn('[Profile] local signOut after delete:', localSignOutError);
+      }
+      try {
+        await signOut();
+      } catch {
+        // ignore — session may already be invalid
+      }
+
       setShowDeleteModal(false);
-      Alert.alert('Account Deleted', 'Your account has been deleted successfully.');
+      setDeleteConfirmText('');
+      Alert.alert(
+        t('profile.accountDeletedTitle'),
+        t('profile.accountDeletedBody'),
+      );
       router.replace('/welcome');
     } catch (err) {
       console.error('Error deleting account:', err);
-      Alert.alert('Error', 'Failed to delete account. Please try again or contact support.');
+      Alert.alert(t('common.error'), t('profile.deleteAccountFailed'));
     } finally {
       setIsDeleting(false);
     }
@@ -340,10 +361,10 @@ export default function ProfileScreen() {
               </Pressable>
               <View className="flex-1 ml-4">
                 <Text className="text-xl font-bold text-[#1a1a1a]">
-                  {isGuest ? 'Guest User' : userDisplayName}
+                  {isGuest ? t('profile.guestUser') : userDisplayName}
                 </Text>
                 <Text className="text-[#8B8B8B] text-sm mt-1">
-                  {isGuest ? 'Sign in to save your data' : userEmail}
+                  {isGuest ? t('profile.signInHint') : userEmail}
                 </Text>
                 {isGuest ? (
                   <Pressable
@@ -351,7 +372,7 @@ export default function ProfileScreen() {
                     className="mt-3 px-4 py-2 rounded-full self-start"
                     style={{ backgroundColor: '#C9A227' }}
                   >
-                    <Text className="text-white text-sm font-semibold">Sign In</Text>
+                    <Text className="text-white text-sm font-semibold">{t('profile.signIn')}</Text>
                   </Pressable>
                 ) : (
                   <Pressable
@@ -360,7 +381,7 @@ export default function ProfileScreen() {
                     style={{ backgroundColor: '#F5EED9' }}
                   >
                     <Edit3 size={14} color="#C9A227" />
-                    <Text className="text-[#C9A227] text-sm font-semibold ml-1">Edit Profile</Text>
+                    <Text className="text-[#C9A227] text-sm font-semibold ml-1">{t('profile.editProfile')}</Text>
                   </Pressable>
                 )}
               </View>
@@ -444,7 +465,7 @@ export default function ProfileScreen() {
           <View className="mx-5 mb-6">
             <View className="flex-row justify-between items-center mb-3">
               <Text className="text-sm font-semibold text-[#8B8B8B] tracking-wider">
-                RECENT SCANS
+                {t('profile.recentScans')}
               </Text>
               {unmatchedCount > 0 && (
                 <View className="flex-row items-center px-2 py-1 rounded-full" style={{ backgroundColor: '#FEF3C7' }}>
@@ -542,7 +563,7 @@ export default function ProfileScreen() {
                 }}
               >
                 <Text className="text-[#C9A227] font-medium">
-                  View all {scans.length} scans
+                  {t('profile.viewAllScans').replace('{{count}}', String(scans.length))}
                 </Text>
               </Pressable>
             )}
@@ -610,7 +631,7 @@ export default function ProfileScreen() {
         {/* Preferences Section */}
         <View className="mx-5 mb-6">
           <Text className="text-sm font-semibold text-[#8B8B8B] tracking-wider mb-3">
-            PREFERENCES
+            {t('profile.preferences')}
           </Text>
 
           <View
@@ -630,10 +651,10 @@ export default function ProfileScreen() {
               </View>
               <View className="flex-1 ml-3">
                 <Text className="text-[#1a1a1a] text-base font-medium">
-                  Notifications
+                  {t('profile.notifications')}
                 </Text>
                 <Text className="text-[#8B8B8B] text-xs mt-0.5">
-                  Get updates on new sake and features
+                  {t('profile.notificationsHint')}
                 </Text>
               </View>
               <Switch
@@ -710,10 +731,10 @@ export default function ProfileScreen() {
               </View>
               <View className="flex-1 ml-3">
                 <Text className="text-[#1a1a1a] text-base font-medium">
-                  Privacy Settings
+                  {t('profile.privacySettings')}
                 </Text>
                 <Text className="text-[#8B8B8B] text-xs mt-0.5">
-                  Manage data and privacy options
+                  {t('profile.privacyHint')}
                 </Text>
               </View>
               <ChevronRight size={20} color="#8B8B8B" />
@@ -724,7 +745,7 @@ export default function ProfileScreen() {
         {/* Support Section */}
         <View className="mx-5 mb-6">
           <Text className="text-sm font-semibold text-[#8B8B8B] tracking-wider mb-3">
-            SUPPORT
+            {t('profile.support')}
           </Text>
 
           <View
@@ -751,7 +772,7 @@ export default function ProfileScreen() {
               </View>
               <View className="flex-1 ml-3">
                 <Text className="text-[#1a1a1a] text-base font-medium">
-                  Contact Us
+                  {t('profile.contactUs')}
                 </Text>
                 <Text className="text-[#8B8B8B] text-xs mt-0.5">
                   Get in touch with our team
@@ -766,7 +787,7 @@ export default function ProfileScreen() {
         {!isGuest && (
           <View className="mx-5 mb-6">
             <Text className="text-sm font-semibold text-[#8B8B8B] tracking-wider mb-3">
-              ACCOUNT
+              {t('profile.account')}
             </Text>
 
             <View
@@ -785,7 +806,7 @@ export default function ProfileScreen() {
                   <LogOut size={20} color="#EF4444" />
                 </View>
                 <Text className="flex-1 text-[#1a1a1a] text-base font-medium ml-3">
-                  Log Out
+                  {t('profile.logOut')}
                 </Text>
                 <ChevronRight size={20} color="#8B8B8B" />
               </Pressable>
@@ -802,7 +823,7 @@ export default function ProfileScreen() {
                 </View>
                 <View className="flex-1 ml-3">
                   <Text className="text-[#DC2626] text-base font-medium">
-                    Delete Account
+                    {t('profile.deleteAccount')}
                   </Text>
                   <Text className="text-[#8B8B8B] text-xs mt-0.5">
                     Permanently remove your account
@@ -844,9 +865,9 @@ export default function ProfileScreen() {
                 style={{ borderBottomWidth: 1, borderBottomColor: colors.border }}
               >
                 <Pressable onPress={() => setShowEditProfileModal(false)}>
-                  <Text className="text-base" style={{ color: colors.textSecondary }}>Cancel</Text>
+                  <Text className="text-base" style={{ color: colors.textSecondary }}>{t('common.cancel')}</Text>
                 </Pressable>
-                <Text className="text-lg font-bold" style={{ color: colors.text }}>Edit Profile</Text>
+                <Text className="text-lg font-bold" style={{ color: colors.text }}>{t('profile.editProfile')}</Text>
                 <Pressable onPress={handleSaveProfile} disabled={!canSaveProfile}>
                   {updateProfile.isPending ? (
                     <ActivityIndicator size="small" color={colors.primary} />
@@ -969,18 +990,18 @@ export default function ProfileScreen() {
             style={{ backgroundColor: '#FAFAF8', maxWidth: 400 }}
           >
             <View className="flex-row items-center justify-between mb-4">
-              <Text className="text-xl font-bold text-[#DC2626]">Delete Account</Text>
+              <Text className="text-xl font-bold text-[#DC2626]">{t('profile.deleteAccountTitle')}</Text>
               <Pressable onPress={() => setShowDeleteModal(false)}>
                 <X size={24} color="#8B8B8B" />
               </Pressable>
             </View>
 
             <Text className="text-[#1a1a1a] text-base mb-4 leading-6">
-              This action is permanent and cannot be undone. All your scan history, reviews, and saved data will be permanently deleted.
+              {t('profile.deleteAccountBody')}
             </Text>
 
             <Text className="text-[#8B8B8B] text-sm mb-2">
-              Type <Text className="font-bold text-[#DC2626]">DELETE</Text> to confirm:
+              {t('profile.typeDelete')}
             </Text>
 
             <TextInput
@@ -1004,7 +1025,7 @@ export default function ProfileScreen() {
                 className="flex-1 py-4 rounded-xl mr-2"
                 style={{ backgroundColor: '#F0EDE5' }}
               >
-                <Text className="text-center text-[#1a1a1a] font-semibold">Cancel</Text>
+                <Text className="text-center text-[#1a1a1a] font-semibold">{t('common.cancel')}</Text>
               </Pressable>
               <Pressable
                 onPress={handleDeleteAccount}
@@ -1018,7 +1039,7 @@ export default function ProfileScreen() {
                 {isDeleting ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
-                  <Text className="text-center text-white font-semibold">Delete</Text>
+                  <Text className="text-center text-white font-semibold">{t('common.delete')}</Text>
                 )}
               </Pressable>
             </View>

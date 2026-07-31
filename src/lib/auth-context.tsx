@@ -129,9 +129,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const resetPassword = async (email: string) => {
-    // App deep link — add this exact URL to Supabase Dashboard → Auth → Redirect URLs (see docs/SUPABASE_BUG_FIXES.md).
+    // Stable app deep link — must be listed in Supabase Dashboard → Auth → Redirect URLs
+    // (see docs/SUPABASE_BUG_FIXES.md). Prefer the custom scheme so the app receives the session.
     const redirectTo = getAuthEmailRedirectUri();
-    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+      redirectTo,
+    });
     if (error) throw error;
   };
 
@@ -187,29 +190,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (error) throw error;
 
-      if (data.user) {
-        try {
-          const email = data.user.email ?? `${data.user.id}@privaterelay.appleid.com`;
-          await ensureUserExists(data.user.id, email);
-        } catch (userError) {
-          console.error('[Auth] Failed to ensure Apple user exists:', userError);
-        }
-      }
-
       // Update user metadata with full name if provided (Apple only sends this on first sign-in)
-      if (credential.fullName?.givenName || credential.fullName?.familyName) {
-        const fullName = [credential.fullName.givenName, credential.fullName.familyName]
-          .filter(Boolean)
-          .join(' ');
+      const fullName = [credential.fullName?.givenName, credential.fullName?.familyName]
+        .filter(Boolean)
+        .join(' ');
 
-        if (fullName) {
+      if (fullName) {
+        try {
           await supabase.auth.updateUser({
             data: {
               full_name: fullName,
-              given_name: credential.fullName.givenName,
-              family_name: credential.fullName.familyName,
+              given_name: credential.fullName?.givenName,
+              family_name: credential.fullName?.familyName,
+              display_name: fullName,
             },
           });
+        } catch (metaError) {
+          console.error('[Auth] Failed to update Apple display name:', metaError);
+        }
+      }
+
+      if (data.user) {
+        try {
+          const email = data.user.email ?? `${data.user.id}@privaterelay.appleid.com`;
+          await ensureUserExists(data.user.id, email, fullName || undefined);
+        } catch (userError) {
+          // Profile row is best-effort — do not fail Sign in with Apple if insert races/triggers.
+          console.error('[Auth] Failed to ensure Apple user exists:', userError);
         }
       }
     } catch (error: unknown) {
@@ -219,6 +226,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // User cancelled, don't throw
         setIsLoading(false);
         return;
+      }
+      // Surface clearer guidance for common Supabase Apple misconfiguration
+      if (error && typeof error === 'object' && 'message' in error) {
+        const msg = String((error as { message?: string }).message ?? '');
+        if (/provider is not enabled/i.test(msg) || /unsupported provider/i.test(msg)) {
+          throw new Error(
+            'Sign in with Apple is not enabled for this project. Enable the Apple provider in Supabase Auth.',
+          );
+        }
+        if (/unacceptable audience|invalid jwt|jwt/i.test(msg)) {
+          throw new Error(
+            'Apple Sign In is misconfigured. Confirm the Apple client IDs in Supabase match the iOS bundle ID (com.sakescan).',
+          );
+        }
       }
       throw error;
     } finally {

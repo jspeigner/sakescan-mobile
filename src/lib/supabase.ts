@@ -134,11 +134,15 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 });
 
 // Helper to ensure user exists in public.users table (for when DB trigger isn't set up)
-export const ensureUserExists = async (userId: string, email?: string) => {
+export const ensureUserExists = async (
+  userId: string,
+  email?: string,
+  displayName?: string,
+) => {
   try {
     const { data: existingUser, error: checkError } = await supabase
       .from('users')
-      .select('id')
+      .select('id, display_name')
       .eq('id', userId)
       .maybeSingle();
 
@@ -146,13 +150,18 @@ export const ensureUserExists = async (userId: string, email?: string) => {
       console.error('[ensureUserExists] Error checking user:', checkError);
     }
 
+    const resolvedName =
+      displayName?.trim() ||
+      (email ? email.split('@')[0] : null) ||
+      'User';
+
     if (!existingUser) {
       const { error: insertError } = await supabase
         .from('users')
         .insert({
           id: userId,
           email: email ?? null,
-          display_name: email ? email.split('@')[0] : 'User',
+          display_name: resolvedName,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         } as Record<string, unknown>);
@@ -160,6 +169,21 @@ export const ensureUserExists = async (userId: string, email?: string) => {
       if (insertError) {
         console.error('[ensureUserExists] Failed to create user:', insertError);
         throw insertError;
+      }
+      return;
+    }
+
+    // Backfill display name when Apple provides it on first sign-in
+    if (displayName?.trim() && !existingUser.display_name) {
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({
+          display_name: displayName.trim(),
+          updated_at: new Date().toISOString(),
+        } as Record<string, unknown>)
+        .eq('id', userId);
+      if (updateError) {
+        console.error('[ensureUserExists] Failed to update display name:', updateError);
       }
     }
   } catch (error) {

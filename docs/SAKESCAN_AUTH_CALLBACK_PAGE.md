@@ -54,7 +54,7 @@ Create a page at **`https://sakescan.com/auth/callback`** (or `/auth/callback.ht
 
       if (accessToken && refreshToken) {
         // Must match expo.scheme in app.json (see src/lib/app-linking.ts)
-        const APP_SCHEME = 'vibecode';
+        const APP_SCHEME = 'sakescan';
         const appUrl = APP_SCHEME + '://reset-password#' + hash;
         const openAppLink = document.getElementById('openApp');
         openAppLink.href = appUrl;
