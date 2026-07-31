@@ -269,15 +269,15 @@ export default function CameraScreen() {
   if (!permission.granted) {
     return (
       <View style={[styles.container, styles.permissionContainer]}>
-        <Text style={styles.permissionTitle}>Camera Permission Required</Text>
+        <Text style={styles.permissionTitle}>{t('camera.permissionTitle')}</Text>
         <Text style={styles.permissionText}>
-          SakeScan needs camera access to scan sake labels
+          {t('camera.permissionBody')}
         </Text>
         <Pressable
           onPress={requestPermission}
           style={styles.permissionButton}
         >
-          <Text style={styles.permissionButtonText}>Grant Permission</Text>
+          <Text style={styles.permissionButtonText}>{t('camera.grantPermission')}</Text>
         </Pressable>
       </View>
     );
@@ -535,8 +535,8 @@ export default function CameraScreen() {
             {isScanning
               ? 'Scanning...'
               : scanMode === 'menu'
-                ? 'Scan Sake Menu'
-                : 'Scan Sake Label'}
+                ? t('camera.scanMenu')
+                : t('camera.scanLabel')}
           </Text>
           <Pressable
             style={styles.headerButton}
@@ -646,7 +646,7 @@ export default function CameraScreen() {
             style={[styles.analyzingPanel, { paddingBottom: insets.bottom + 32 }]}
           >
             <Text style={styles.analyzingTitle}>
-              {scanMode === 'menu' ? 'Reading Menu' : 'Analyzing with AI'}
+              {scanMode === 'menu' ? t('camera.readingMenu') : t('camera.analyzing')}
             </Text>
             <Text style={styles.analyzingStage}>{stageText}</Text>
 
@@ -662,8 +662,8 @@ export default function CameraScreen() {
             <View style={styles.instructionsContainer}>
               <Text style={styles.instructionText}>
                 {scanMode === 'menu'
-                  ? 'Point camera at the sake menu'
-                  : 'Position label within frame'}
+                  ? t('camera.pointAtMenu')
+                  : t('camera.pointAtLabel')}
               </Text>
               {scanMode === 'menu' && menuPreferences?.preferredFlavors?.length ? (
                 <Text style={styles.prefsHintText}>

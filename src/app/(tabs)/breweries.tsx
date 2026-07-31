@@ -106,14 +106,16 @@ export default function BreweriesScreen() {
                 </>
               )}
               <Text className="text-xs ml-2" style={{ color: colors.textTertiary }}>
-                {brewery.sakeCount} sake{brewery.sakeCount !== 1 ? 's' : ''}
+                {brewery.sakeCount === 1
+                  ? t('breweries.sakeCount').replace('{{count}}', String(brewery.sakeCount))
+                  : t('breweries.sakeCountPlural').replace('{{count}}', String(brewery.sakeCount))}
               </Text>
             </View>
           </View>
         </View>
       </Pressable>
     ),
-    [handleBreweryPress, colors],
+    [handleBreweryPress, colors, t],
   );
 
   const listHeader = useMemo(
@@ -122,7 +124,7 @@ export default function BreweriesScreen() {
         {featuredBrewery ? (
           <View className="px-5 mb-6">
             <Text className="text-sm font-semibold tracking-wider mb-3" style={{ color: colors.textTertiary }}>
-              FEATURED
+              {t('breweries.featured')}
             </Text>
             <Pressable
               onPress={() => handleBreweryPress(featuredBrewery.name)}
@@ -137,8 +139,10 @@ export default function BreweriesScreen() {
                     <Text className="text-sm ml-1" style={{ color: colors.primary }}>{featuredBrewery.region}</Text>
                   </View>
                   <Text className="text-sm mt-2" style={{ color: colors.textSecondary }}>
-                    {featuredBrewery.sakeCount} sake{featuredBrewery.sakeCount !== 1 ? 's' : ''} in
-                    collection
+                    {featuredBrewery.sakeCount === 1
+                      ? t('breweries.sakeCount').replace('{{count}}', String(featuredBrewery.sakeCount))
+                      : t('breweries.sakeCountPlural').replace('{{count}}', String(featuredBrewery.sakeCount))}{' '}
+                    {t('breweries.inCollection')}
                   </Text>
                 </View>
               </View>
@@ -148,12 +152,12 @@ export default function BreweriesScreen() {
 
         {listData.length > 0 ? (
           <View className="px-5 mb-3">
-            <Text className="text-sm font-semibold tracking-wider" style={{ color: colors.textTertiary }}>ALL BREWERIES</Text>
+            <Text className="text-sm font-semibold tracking-wider" style={{ color: colors.textTertiary }}>{t('breweries.all')}</Text>
           </View>
         ) : null}
       </View>
     ),
-    [featuredBrewery, listData.length, handleBreweryPress, colors],
+    [featuredBrewery, listData.length, handleBreweryPress, colors, t],
   );
 
   if (isPending && flatRows.length === 0) {
@@ -164,12 +168,12 @@ export default function BreweriesScreen() {
             {t('common.breweries')}
           </Text>
           <Text className="text-base mt-1" style={{ color: colors.textTertiary }}>
-            Discover Japan's finest sake producers
+            {t('breweries.subtitle')}
           </Text>
         </View>
         <View className="items-center py-20">
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text className="mt-4" style={{ color: colors.textTertiary }}>Loading breweries...</Text>
+          <Text className="mt-4" style={{ color: colors.textTertiary }}>{t('breweries.loading')}</Text>
         </View>
       </View>
     );
@@ -186,7 +190,7 @@ export default function BreweriesScreen() {
         <View className="items-center py-16 px-6">
           <Building2 size={48} color={colors.primary} />
           <Text className="font-semibold text-lg mt-4 text-center" style={{ color: colors.text }}>
-            Couldn't load breweries
+            {t('breweries.loadError')}
           </Text>
           <Text className="text-center mt-2 text-sm" style={{ color: colors.textTertiary }}>
             {error instanceof Error ? error.message : 'Check your connection and try again.'}
@@ -201,7 +205,7 @@ export default function BreweriesScreen() {
             className="mt-6 px-6 py-3 rounded-full"
             style={{ backgroundColor: colors.primary }}
           >
-            <Text className="text-white font-semibold">Try again</Text>
+            <Text className="text-white font-semibold">{t('breweries.tryAgain')}</Text>
           </Pressable>
         </View>
       </View>
@@ -215,7 +219,7 @@ export default function BreweriesScreen() {
           {t('common.breweries')}
         </Text>
         <Text className="text-base mt-1" style={{ color: colors.textTertiary }}>
-          Discover Japan's finest sake producers
+          {t('breweries.subtitle')}
         </Text>
         {flatRows.length > 0 && (
           <Text className="text-xs mt-2" style={{ color: colors.textSecondary }}>

@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
@@ -11,16 +12,33 @@ import type { Session, User } from '@supabase/supabase-js';
 // Required for Google Auth to work on web
 WebBrowser.maybeCompleteAuthSession();
 
+const PASSWORD_RECOVERY_KEY = '@sakescan:password_recovery';
+
+async function persistPasswordRecovery(value: boolean) {
+  try {
+    if (value) {
+      await AsyncStorage.setItem(PASSWORD_RECOVERY_KEY, '1');
+    } else {
+      await AsyncStorage.removeItem(PASSWORD_RECOVERY_KEY);
+    }
+  } catch (error) {
+    console.log('[Auth] Failed to persist recovery flag:', error);
+  }
+}
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   isLoading: boolean;
+  /** True while the session came from a password-recovery link (must finish reset). */
+  isPasswordRecovery: boolean;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signUpWithEmail: (email: string, password: string) => Promise<{ user: User | null; session: Session | null; }>;
   signInWithApple: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   updatePassword: (newPassword: string) => Promise<void>;
+  clearPasswordRecovery: () => Promise<void>;
   refreshUser: () => Promise<void>;
   signOut: () => Promise<void>;
   continueAsGuest: () => void;
@@ -34,6 +52,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isGuest, setIsGuest] = useState(false);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
+
+  const markPasswordRecovery = (value: boolean) => {
+    setIsPasswordRecovery(value);
+    void persistPasswordRecovery(value);
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -57,6 +81,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
           setSession(data.session);
           setUser(data.session?.user ?? null);
+          // PASSWORD_RECOVERY is only emitted when the link is opened — restore the
+          // durable marker so cold starts still route to /reset-password (B03).
+          if (data.session) {
+            try {
+              const recoveryFlag = await AsyncStorage.getItem(PASSWORD_RECOVERY_KEY);
+              if (isMounted && recoveryFlag === '1') {
+                setIsPasswordRecovery(true);
+              }
+            } catch (storageError) {
+              console.log('[Auth] Failed to read recovery flag:', storageError);
+            }
+          } else {
+            await persistPasswordRecovery(false);
+          }
         }
       } catch (error) {
         console.log('[Auth] Initial session check failed:', error);
@@ -71,11 +109,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     initAuth();
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (isMounted) {
         setSession(session);
         setUser(session?.user ?? null);
         setIsGuest(false);
+        // PKCE recovery links often arrive as auth/callback?code=… without type=recovery.
+        // Supabase emits PASSWORD_RECOVERY after exchangeCodeForSession / setSession.
+        if (event === 'PASSWORD_RECOVERY') {
+          markPasswordRecovery(true);
+        } else if (event === 'SIGNED_OUT') {
+          markPasswordRecovery(false);
+        }
       }
     });
 
@@ -129,15 +174,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const resetPassword = async (email: string) => {
-    // App deep link — add this exact URL to Supabase Dashboard → Auth → Redirect URLs (see docs/SUPABASE_BUG_FIXES.md).
+    // Stable app deep link — must be listed in Supabase Dashboard → Auth → Redirect URLs
+    // (see docs/SUPABASE_BUG_FIXES.md). Prefer the custom scheme so the app receives the session.
     const redirectTo = getAuthEmailRedirectUri();
-    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+      redirectTo,
+    });
     if (error) throw error;
+  };
+
+  const clearPasswordRecovery = async () => {
+    setIsPasswordRecovery(false);
+    await persistPasswordRecovery(false);
   };
 
   const updatePassword = async (newPassword: string) => {
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) throw error;
+    // Await durable clear so a cold start cannot restore a stale recovery flag.
+    await clearPasswordRecovery();
   };
 
   const refreshUser = async () => {
@@ -187,29 +242,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (error) throw error;
 
-      if (data.user) {
-        try {
-          const email = data.user.email ?? `${data.user.id}@privaterelay.appleid.com`;
-          await ensureUserExists(data.user.id, email);
-        } catch (userError) {
-          console.error('[Auth] Failed to ensure Apple user exists:', userError);
-        }
-      }
-
       // Update user metadata with full name if provided (Apple only sends this on first sign-in)
-      if (credential.fullName?.givenName || credential.fullName?.familyName) {
-        const fullName = [credential.fullName.givenName, credential.fullName.familyName]
-          .filter(Boolean)
-          .join(' ');
+      const fullName = [credential.fullName?.givenName, credential.fullName?.familyName]
+        .filter(Boolean)
+        .join(' ');
 
-        if (fullName) {
+      if (fullName) {
+        try {
           await supabase.auth.updateUser({
             data: {
               full_name: fullName,
-              given_name: credential.fullName.givenName,
-              family_name: credential.fullName.familyName,
+              given_name: credential.fullName?.givenName,
+              family_name: credential.fullName?.familyName,
+              display_name: fullName,
             },
           });
+        } catch (metaError) {
+          console.error('[Auth] Failed to update Apple display name:', metaError);
+        }
+      }
+
+      if (data.user) {
+        try {
+          const email = data.user.email ?? `${data.user.id}@privaterelay.appleid.com`;
+          await ensureUserExists(data.user.id, email, fullName || undefined);
+        } catch (userError) {
+          // Profile row is best-effort — do not fail Sign in with Apple if insert races/triggers.
+          console.error('[Auth] Failed to ensure Apple user exists:', userError);
         }
       }
     } catch (error: unknown) {
@@ -219,6 +278,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // User cancelled, don't throw
         setIsLoading(false);
         return;
+      }
+      // Surface clearer guidance for common Supabase Apple misconfiguration
+      if (error && typeof error === 'object' && 'message' in error) {
+        const msg = String((error as { message?: string }).message ?? '');
+        if (/provider is not enabled/i.test(msg) || /unsupported provider/i.test(msg)) {
+          throw new Error(
+            'Sign in with Apple is not enabled for this project. Enable the Apple provider in Supabase Auth.',
+          );
+        }
+        if (/unacceptable audience|invalid jwt|jwt/i.test(msg)) {
+          throw new Error(
+            'Apple Sign In is misconfigured. Confirm the Apple client IDs in Supabase match the iOS bundle ID (com.sakescan).',
+          );
+        }
       }
       throw error;
     } finally {
@@ -296,9 +369,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     setIsLoading(true);
-    await supabase.auth.signOut();
-    setIsGuest(false);
-    setIsLoading(false);
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      setIsGuest(false);
+      markPasswordRecovery(false);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const continueAsGuest = () => {
@@ -312,12 +390,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         session,
         isLoading,
+        isPasswordRecovery,
         signInWithEmail,
         signUpWithEmail,
         signInWithApple,
         signInWithGoogle,
         resetPassword,
         updatePassword,
+        clearPasswordRecovery,
         refreshUser,
         signOut,
         continueAsGuest,

@@ -127,19 +127,19 @@ export default function SavedScreen() {
           <View className="flex-1 items-center justify-center py-20 px-5">
             <GlassWater size={48} color={colors.primary} />
             <Text className="font-semibold text-lg mt-4" style={{ color: colors.text }}>
-              {activeTab === 'favorites' ? 'No favorites yet' : 'No rated sakes yet'}
+              {activeTab === 'favorites' ? t('saved.emptyFavorites') : t('saved.emptyRated')}
             </Text>
             <Text className="text-sm mt-2 text-center" style={{ color: colors.textTertiary }}>
               {activeTab === 'favorites'
-                ? 'Tap the heart icon on any sake to add it to your favorites'
-                : 'Rate and review sakes to track what you\'ve tried'}
+                ? t('saved.emptyFavoritesHint')
+                : t('saved.emptyRatedHint')}
             </Text>
             <Pressable
               onPress={() => router.push('/(tabs)/explore')}
               className="mt-6 px-6 py-3 rounded-full"
               style={{ backgroundColor: colors.primary }}
             >
-              <Text className="text-white font-semibold">Explore Sake</Text>
+              <Text className="text-white font-semibold">{t('saved.exploreCta')}</Text>
             </Pressable>
           </View>
         ) : (

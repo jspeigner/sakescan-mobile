@@ -19,7 +19,7 @@ import { useTheme } from '@/lib/theme-context';
 
 export default function ResetPasswordScreen() {
   const insets = useSafeAreaInsets();
-  const { updatePassword } = useAuth();
+  const { updatePassword, clearPasswordRecovery, signOut } = useAuth();
   const { colors } = useTheme();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -62,6 +62,15 @@ export default function ResetPasswordScreen() {
 
   const handleBack = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // End the recovery session first; only drop the marker once signed out
+    // so /auth cannot bounce a still-authenticated user into /(tabs).
+    try {
+      await signOut();
+    } catch {
+      // Keep recovery marker and stay on reset if abandon cannot end the session.
+      return;
+    }
+    await clearPasswordRecovery();
     router.replace('/auth');
   };
 

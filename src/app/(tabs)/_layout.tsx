@@ -12,6 +12,7 @@ import { useI18n } from '@/lib/i18n-context';
 
 function CameraTabButton() {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const { isGuest, session } = useAuth();
   const canScanLabel = useGuestUsageStore((s) => s.canScanLabel);
   const loadUsage = useGuestUsageStore((s) => s.loadUsage);
@@ -25,11 +26,11 @@ function CameraTabButton() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (isGuest && !session?.access_token && !canScanLabel()) {
       Alert.alert(
-        'Free Scans Used Up',
-        `You've used all ${FREE_SCAN_LIMIT} free label scans. Create an account to keep scanning and unlock the menu scanner.`,
+        t('home.freeScansTitle'),
+        t('home.freeScansBody').replace('{{count}}', String(FREE_SCAN_LIMIT)),
         [
-          { text: 'Sign Up', onPress: () => router.push('/welcome') },
-          { text: 'Not Now', style: 'cancel' },
+          { text: t('home.signUp'), onPress: () => router.push('/welcome') },
+          { text: t('home.notNow'), style: 'cancel' },
         ],
       );
       return;

@@ -5,17 +5,20 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { ChevronLeft } from 'lucide-react-native';
 import { useAuth } from '@/lib/auth-context';
+import { useI18n } from '@/lib/i18n-context';
 
 export default function AuthScreen() {
   const insets = useSafeAreaInsets();
-  const { user, signInWithEmail, signUpWithEmail, resetPassword } = useAuth();
+  const { t } = useI18n();
+  const { user, signInWithEmail, signUpWithEmail, resetPassword, isPasswordRecovery } = useAuth();
   
   // Watch for successful authentication and navigate to tabs
+  // Skip during password recovery so reset-password is not overridden.
   useEffect(() => {
-    if (user) {
+    if (user && !isPasswordRecovery) {
       router.replace('/(tabs)');
     }
-  }, [user]);
+  }, [user, isPasswordRecovery]);
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -24,17 +27,17 @@ export default function AuthScreen() {
 
   const handleSubmit = async () => {
     if (!email || !password) {
-      Alert.alert('Missing Information', 'Please enter both email and password.');
+      Alert.alert(t('common.error'), t('auth.missingInfo'));
       return;
     }
 
     if (isSignUp && password !== confirmPassword) {
-      Alert.alert('Password Mismatch', 'Passwords do not match.');
+      Alert.alert(t('common.error'), t('auth.passwordMismatch'));
       return;
     }
 
     if (password.length < 6) {
-      Alert.alert('Invalid Password', 'Password must be at least 6 characters long.');
+      Alert.alert(t('common.error'), t('auth.invalidPassword'));
       return;
     }
 
@@ -48,16 +51,16 @@ export default function AuthScreen() {
         const session = result?.session;
         if (!session) {
           Alert.alert(
-            'Check Your Email',
-            'We sent a confirmation link to your email. Please check your inbox and confirm to sign in.',
+            t('auth.checkEmail'),
+            t('auth.checkEmailBody'),
             [{ text: 'OK' }]
           );
         } else {
           // Auto-signed in (email confirmation disabled)
           // Navigation happens automatically via auth state listener
           Alert.alert(
-            'Success!',
-            'Account created successfully. You\'re now signed in!',
+            t('common.success'),
+            t('auth.signUpSuccess'),
             [{ text: 'OK' }]
           );
         }
@@ -78,8 +81,8 @@ export default function AuthScreen() {
         setIsSignUp(false);
         setConfirmPassword('');
         Alert.alert(
-          'Account Already Exists',
-          'This email is already registered. Please sign in with your password.',
+          t('common.error'),
+          t('auth.accountExists'),
           [{ text: 'OK' }]
         );
         return;
@@ -96,15 +99,15 @@ export default function AuthScreen() {
 
   const handleForgotPassword = async () => {
     if (!email) {
-      Alert.alert('Enter Your Email', 'Please enter your email address first, then tap Forgot Password.');
+      Alert.alert(t('common.error'), t('auth.enterEmailFirst'));
       return;
     }
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
       await resetPassword(email);
       Alert.alert(
-        'Check Your Email',
-        'If an account exists with that email, we sent a password reset link. Please check your inbox.',
+        t('auth.resetSentTitle'),
+        t('auth.resetSentBody'),
         [{ text: 'OK' }]
       );
     } catch (err: unknown) {
@@ -133,21 +136,19 @@ export default function AuthScreen() {
               <ChevronLeft size={28} color="#1a1a1a" />
             </Pressable>
             <Text className="text-2xl font-bold text-[#1a1a1a]">
-              {isSignUp ? 'Create Account' : 'Sign In'}
+              {isSignUp ? t('auth.createAccount') : t('auth.signIn')}
             </Text>
           </View>
 
           {/* Content */}
           <View className="flex-1 px-6 pt-8">
             <Text className="text-[#6B6B6B] text-base mb-8">
-              {isSignUp
-                ? 'Create an account to save your scans and reviews.'
-                : 'Sign in to access your scan history and reviews.'}
+              {isSignUp ? t('auth.signUpSubtitle') : t('auth.signInSubtitle')}
             </Text>
 
             {/* Email Input */}
             <Text className="text-sm font-semibold text-[#8B8B8B] mb-2 tracking-wider">
-              EMAIL
+              {t('auth.emailLabel')}
             </Text>
             <TextInput
               value={email}
@@ -168,12 +169,12 @@ export default function AuthScreen() {
 
             {/* Password Input */}
             <Text className="text-sm font-semibold text-[#8B8B8B] mb-2 tracking-wider">
-              PASSWORD
+              {t('auth.passwordLabel')}
             </Text>
             <TextInput
               value={password}
               onChangeText={setPassword}
-              placeholder="At least 6 characters"
+              placeholder={t('auth.passwordPlaceholder')}
               placeholderTextColor="#B5B5B5"
               secureTextEntry
               autoCapitalize="none"
@@ -191,12 +192,12 @@ export default function AuthScreen() {
             {isSignUp && (
               <>
                 <Text className="text-sm font-semibold text-[#8B8B8B] mb-2 tracking-wider">
-                  CONFIRM PASSWORD
+                  {t('auth.confirmPasswordLabel')}
                 </Text>
                 <TextInput
                   value={confirmPassword}
                   onChangeText={setConfirmPassword}
-                  placeholder="Re-enter password"
+                  placeholder={t('auth.confirmPasswordPlaceholder')}
                   placeholderTextColor="#B5B5B5"
                   secureTextEntry
                   autoCapitalize="none"
@@ -226,7 +227,7 @@ export default function AuthScreen() {
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
                 <Text className="text-white text-base font-semibold text-center">
-                  {isSignUp ? 'Create Account' : 'Sign In'}
+                  {isSignUp ? t('auth.createAccount') : t('auth.signIn')}
                 </Text>
               )}
             </Pressable>
@@ -234,7 +235,7 @@ export default function AuthScreen() {
             {/* Forgot Password - only on sign in */}
             {!isSignUp && (
               <Pressable onPress={handleForgotPassword} className="mt-4 items-center">
-                <Text className="text-[#C9A227] text-sm font-medium">Forgot Password?</Text>
+                <Text className="text-[#C9A227] text-sm font-medium">{t('auth.forgotPassword')}</Text>
               </Pressable>
             )}
 
@@ -247,9 +248,9 @@ export default function AuthScreen() {
               className="mt-6 items-center"
             >
               <Text className="text-[#6B6B6B] text-base">
-                {isSignUp ? 'Already have an account? ' : "Don't have an account? "}
+                {isSignUp ? t('auth.alreadyHaveAccount') + ' ' : t('auth.dontHaveAccount') + ' '}
                 <Text className="text-[#C9A227] font-semibold">
-                  {isSignUp ? 'Sign In' : 'Sign Up'}
+                  {isSignUp ? t('auth.signIn') : t('auth.signUp')}
                 </Text>
               </Text>
             </Pressable>

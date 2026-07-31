@@ -239,13 +239,20 @@ function SplashOverlay({ ready }: { ready: boolean }) {
 }
 
 function AppContent({ fontsReady }: { fontsReady: boolean }) {
-  const { isLoading } = useAuth();
+  const { isLoading, isPasswordRecovery } = useAuth();
   const { isDarkMode } = useTheme();
   const appReady = fontsReady && !isLoading;
 
   useEffect(() => {
     console.log('[AppContent] isLoading:', isLoading, 'fontsReady:', fontsReady, 'appReady:', appReady);
   }, [isLoading, fontsReady, appReady]);
+
+  // PKCE recovery callbacks often lack type=recovery in the URL; route from the auth event.
+  useEffect(() => {
+    if (isPasswordRecovery) {
+      router.replace('/reset-password');
+    }
+  }, [isPasswordRecovery]);
 
   const navigationScheme = isDarkMode ? 'dark' : 'light';
 
@@ -323,23 +330,56 @@ export default function RootLayout() {
 
       let params: Record<string, string> = {};
 
+      // Merge query + hash (PKCE uses ?code=, recovery often uses #access_token=)
+      if (queryIndex !== -1) {
+        const queryPart = url.slice(
+          queryIndex + 1,
+          fragmentIndex !== -1 && fragmentIndex > queryIndex ? fragmentIndex : undefined,
+        );
+        params = { ...params, ...parsePairs(queryPart) };
+      }
       if (fragmentIndex !== -1) {
-        params = parsePairs(url.slice(fragmentIndex + 1));
-      } else if (queryIndex !== -1) {
-        params = parsePairs(url.slice(queryIndex + 1));
-      } else {
+        params = { ...params, ...parsePairs(url.slice(fragmentIndex + 1)) };
+      }
+
+      if (!Object.keys(params).length) {
+        // Direct path open: sakescan://reset-password or .../auth/callback
+        if (/reset-password/i.test(url)) {
+          router.replace('/reset-password');
+        }
         return;
       }
 
-      const { access_token, refresh_token, type } = params;
+      const { access_token, refresh_token, type, code, error_description, error } = params;
 
-      if (access_token && refresh_token) {
-        const { error } = await supabase.auth.setSession({ access_token, refresh_token });
-        if (error) {
-          console.error('[RootLayout] Failed to set session from deep link:', error);
+      if (error || error_description) {
+        console.error('[RootLayout] Auth deep link error:', error_description || error);
+        return;
+      }
+
+      // PKCE recovery / magic-link flow (app uses flowType: 'pkce')
+      if (code) {
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        if (exchangeError) {
+          console.error('[RootLayout] Failed to exchange auth code:', exchangeError);
           return;
         }
-        if (type === 'recovery') {
+        if (type === 'recovery' || /reset-password|recovery/i.test(url)) {
+          router.replace('/reset-password');
+        }
+        return;
+      }
+
+      if (access_token && refresh_token) {
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token,
+          refresh_token,
+        });
+        if (sessionError) {
+          console.error('[RootLayout] Failed to set session from deep link:', sessionError);
+          return;
+        }
+        if (type === 'recovery' || /reset-password/i.test(url)) {
           router.replace('/reset-password');
         }
       }

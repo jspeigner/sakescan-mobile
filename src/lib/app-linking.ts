@@ -1,5 +1,4 @@
 import Constants from 'expo-constants';
-import * as Linking from 'expo-linking';
 
 /**
  * Deep-link URL scheme from Expo config (`expo.scheme` in app.json).
@@ -26,10 +25,24 @@ export function getOAuthRedirectUri(): string {
 
 /**
  * Redirect for password recovery / magic links — must be listed in Supabase Auth → Redirect URLs.
- * Prefer this over a web-only URL so the app receives `#access_token` / PKCE params (B15).
+ *
+ * Use a stable custom-scheme URL (not Linking.createURL) so TestFlight/production always emit
+ * `sakescan://auth/callback` that matches the Supabase allow list. Expo Go / dev clients may
+ * still need the exp:// URLs added in the dashboard.
+ *
+ * Also allowlist:
+ * - sakescan://auth/callback
+ * - sakescan://reset-password
+ * - https://www.sakescan.com/auth/callback (web bridge)
  */
 export function getAuthEmailRedirectUri(): string {
-  return Linking.createURL('auth/callback');
+  // Stable production deep link — do not use Linking.createURL here (can emit exp:// or /--/ paths).
+  return `${getAppUrlScheme()}://auth/callback`;
+}
+
+/** Web auth bridge used when email clients cannot open custom schemes directly. */
+export function getAuthWebRedirectUri(): string {
+  return 'https://www.sakescan.com/auth/callback';
 }
 
 /** Deep link to a public user profile. */
