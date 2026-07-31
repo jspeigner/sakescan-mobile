@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
@@ -10,6 +11,20 @@ import type { Session, User } from '@supabase/supabase-js';
 
 // Required for Google Auth to work on web
 WebBrowser.maybeCompleteAuthSession();
+
+const PASSWORD_RECOVERY_KEY = '@sakescan:password_recovery';
+
+async function persistPasswordRecovery(value: boolean) {
+  try {
+    if (value) {
+      await AsyncStorage.setItem(PASSWORD_RECOVERY_KEY, '1');
+    } else {
+      await AsyncStorage.removeItem(PASSWORD_RECOVERY_KEY);
+    }
+  } catch (error) {
+    console.log('[Auth] Failed to persist recovery flag:', error);
+  }
+}
 
 interface AuthContextType {
   user: User | null;
@@ -23,6 +38,7 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   updatePassword: (newPassword: string) => Promise<void>;
+  clearPasswordRecovery: () => Promise<void>;
   refreshUser: () => Promise<void>;
   signOut: () => Promise<void>;
   continueAsGuest: () => void;
@@ -37,6 +53,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isGuest, setIsGuest] = useState(false);
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
+
+  const markPasswordRecovery = (value: boolean) => {
+    setIsPasswordRecovery(value);
+    void persistPasswordRecovery(value);
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -60,6 +81,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
           setSession(data.session);
           setUser(data.session?.user ?? null);
+          // PASSWORD_RECOVERY is only emitted when the link is opened — restore the
+          // durable marker so cold starts still route to /reset-password (B03).
+          if (data.session) {
+            try {
+              const recoveryFlag = await AsyncStorage.getItem(PASSWORD_RECOVERY_KEY);
+              if (isMounted && recoveryFlag === '1') {
+                setIsPasswordRecovery(true);
+              }
+            } catch (storageError) {
+              console.log('[Auth] Failed to read recovery flag:', storageError);
+            }
+          } else {
+            await persistPasswordRecovery(false);
+          }
         }
       } catch (error) {
         console.log('[Auth] Initial session check failed:', error);
@@ -82,9 +117,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // PKCE recovery links often arrive as auth/callback?code=… without type=recovery.
         // Supabase emits PASSWORD_RECOVERY after exchangeCodeForSession / setSession.
         if (event === 'PASSWORD_RECOVERY') {
-          setIsPasswordRecovery(true);
+          markPasswordRecovery(true);
         } else if (event === 'SIGNED_OUT') {
-          setIsPasswordRecovery(false);
+          markPasswordRecovery(false);
         }
       }
     });
@@ -151,7 +186,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const updatePassword = async (newPassword: string) => {
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) throw error;
+    markPasswordRecovery(false);
+  };
+
+  const clearPasswordRecovery = async () => {
     setIsPasswordRecovery(false);
+    await persistPasswordRecovery(false);
   };
 
   const refreshUser = async () => {
@@ -330,7 +370,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     await supabase.auth.signOut();
     setIsGuest(false);
-    setIsPasswordRecovery(false);
+    markPasswordRecovery(false);
     setIsLoading(false);
   };
 
@@ -352,6 +392,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signInWithGoogle,
         resetPassword,
         updatePassword,
+        clearPasswordRecovery,
         refreshUser,
         signOut,
         continueAsGuest,

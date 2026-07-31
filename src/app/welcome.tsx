@@ -125,12 +125,20 @@ export default function WelcomeScreen() {
 
   const handleSkip = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (isPasswordRecovery) {
+      router.replace('/reset-password');
+      return;
+    }
     continueAsGuest();
     router.replace('/(tabs)');
   };
 
   const handleContinueAsGuest = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (isPasswordRecovery) {
+      router.replace('/reset-password');
+      return;
+    }
     continueAsGuest();
     router.replace('/(tabs)');
   };
