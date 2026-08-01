@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Text,
   View,
@@ -287,6 +287,9 @@ export default function ScanResultScreen({
   }, [confirmed, savedScanId, catalogSake, catalogSakeId, contributeStatus, showContributePrompt]);
 
   // Keep the persisted scan (and linked activity) aligned with the selected match.
+  // Skip social invalidation on the first align — useCreateScan's emitActivityEvent
+  // may still be in flight, and an early refetch can cache a feed without the new row.
+  const hasAlignedScanRef = useRef(false);
   useEffect(() => {
     if (!savedScanId || !catalogSakeId) return;
     void (async () => {
@@ -306,8 +309,12 @@ export default function ScanResultScreen({
         console.error('Failed to realign activity sake_id:', activityError);
       }
       queryClient.invalidateQueries({ queryKey: ['scans'] });
-      queryClient.invalidateQueries({ queryKey: ['social', 'feed'] });
-      queryClient.invalidateQueries({ queryKey: ['social', 'userActivity'] });
+      if (hasAlignedScanRef.current) {
+        queryClient.invalidateQueries({ queryKey: ['social', 'feed'] });
+        queryClient.invalidateQueries({ queryKey: ['social', 'userActivity'] });
+      } else {
+        hasAlignedScanRef.current = true;
+      }
     })();
   }, [savedScanId, catalogSakeId, queryClient]);
 
