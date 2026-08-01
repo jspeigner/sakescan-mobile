@@ -17,6 +17,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ChevronLeft,
   Share2,
@@ -79,6 +80,7 @@ export default function ScanResultScreen({
   ambiguous = false,
 }: ScanResultScreenProps) {
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
   const [isSaving, setIsSaving] = useState(false);
   const [catalogSakeId, setCatalogSakeId] = useState<string | undefined>(initialCatalogId);
   const [sakeInfo, setSakeInfo] = useState(initialSakeInfo);
@@ -284,17 +286,30 @@ export default function ScanResultScreen({
     }
   }, [confirmed, savedScanId, catalogSake, catalogSakeId, contributeStatus, showContributePrompt]);
 
-  // Keep the persisted scan aligned with the currently selected match (e.g. "Did you mean?").
+  // Keep the persisted scan (and linked activity) aligned with the selected match.
   useEffect(() => {
     if (!savedScanId || !catalogSakeId) return;
-    void supabase
-      .from('scans')
-      .update({ sake_id: catalogSakeId } as Record<string, unknown>)
-      .eq('id', savedScanId)
-      .then(({ error }) => {
-        if (error) console.error('Failed to realign scan sake_id:', error);
-      });
-  }, [savedScanId, catalogSakeId]);
+    void (async () => {
+      const { error } = await supabase
+        .from('scans')
+        .update({ sake_id: catalogSakeId } as Record<string, unknown>)
+        .eq('id', savedScanId);
+      if (error) {
+        console.error('Failed to realign scan sake_id:', error);
+        return;
+      }
+      const { error: activityError } = await supabase
+        .from('activity_events')
+        .update({ sake_id: catalogSakeId } as Record<string, unknown>)
+        .eq('scan_id', savedScanId);
+      if (activityError) {
+        console.error('Failed to realign activity sake_id:', activityError);
+      }
+      queryClient.invalidateQueries({ queryKey: ['scans'] });
+      queryClient.invalidateQueries({ queryKey: ['social', 'feed'] });
+      queryClient.invalidateQueries({ queryKey: ['social', 'userActivity'] });
+    })();
+  }, [savedScanId, catalogSakeId, queryClient]);
 
   const handleWrongSake = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
