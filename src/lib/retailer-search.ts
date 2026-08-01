@@ -33,7 +33,8 @@ export async function findSakeRetailers(
     const data = await response.json();
 
     if (!data.success) {
-      throw new Error(data.error || 'Failed to find retailers');
+      console.error('Error finding sake retailers:', data.error || 'Failed to find retailers');
+      return [];
     }
 
     return (data.retailers as RetailerInfo[])
@@ -41,7 +42,7 @@ export async function findSakeRetailers(
       .slice(0, 10);
   } catch (error) {
     console.error('Error finding sake retailers:', error);
-    throw error;
+    return [];
   }
 }
 

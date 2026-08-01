@@ -34,7 +34,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useScanHistoryStore } from '@/lib/scan-history-store';
 import { useCreateSake, useCreateScan, useSake } from '@/lib/supabase-hooks';
-import { getCurrentUser } from '@/lib/supabase';
+import { getCurrentUser, supabase } from '@/lib/supabase';
 import { buildSakeShareMessage } from '@/lib/share-sake';
 import { catalogSakeToScanInfo } from '@/lib/sake-catalog';
 import { getFlavorTagTip } from '@/lib/sake-learn';
@@ -247,10 +247,6 @@ export default function ScanResultScreen({
     });
     setConfirmed(true);
     setShowWrongPicker(false);
-    // Offer catalog contribution when the matched sake needs a better photo.
-    if (savedScanId && sakeNeedsCatalogImage(catalogSake)) {
-      setShowContributePrompt(true);
-    }
   };
 
   const handleContributeAccept = async () => {
@@ -287,6 +283,18 @@ export default function ScanResultScreen({
       setShowContributePrompt(true);
     }
   }, [confirmed, savedScanId, catalogSake, catalogSakeId, contributeStatus, showContributePrompt]);
+
+  // Keep the persisted scan aligned with the currently selected match (e.g. "Did you mean?").
+  useEffect(() => {
+    if (!savedScanId || !catalogSakeId) return;
+    void supabase
+      .from('scans')
+      .update({ sake_id: catalogSakeId } as Record<string, unknown>)
+      .eq('id', savedScanId)
+      .then(({ error }) => {
+        if (error) console.error('Failed to realign scan sake_id:', error);
+      });
+  }, [savedScanId, catalogSakeId]);
 
   const handleWrongSake = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
