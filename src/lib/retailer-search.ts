@@ -13,7 +13,7 @@ export interface RetailerInfo {
 
 /**
  * Search for retailers that sell a specific sake via backend API.
- * Note: `/api/retailers` may not exist on sakescan.com yet — returns [] on failure.
+ * Throws on API/network failure so callers can show an error state.
  */
 export async function findSakeRetailers(
   sakeName: string,
@@ -33,8 +33,7 @@ export async function findSakeRetailers(
     const data = await response.json();
 
     if (!data.success) {
-      console.error('Error finding sake retailers:', data.error || 'Failed to find retailers');
-      return [];
+      throw new Error(data.error || 'Failed to find retailers');
     }
 
     return (data.retailers as RetailerInfo[])
@@ -42,7 +41,7 @@ export async function findSakeRetailers(
       .slice(0, 10);
   } catch (error) {
     console.error('Error finding sake retailers:', error);
-    return [];
+    throw error;
   }
 }
 
