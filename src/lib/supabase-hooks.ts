@@ -563,14 +563,18 @@ export function useCreateScan() {
     },
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['scans'] });
-      void import('./social-hooks').then(({ emitActivityEvent }) =>
-        emitActivityEvent({
+      // Await activity insert before invalidating social caches so a mounted
+      // feed cannot refetch and stick with a result that omits this scan.
+      void import('./social-hooks').then(async ({ emitActivityEvent }) => {
+        await emitActivityEvent({
           actorId: variables.userId,
           type: 'scan',
           sakeId: variables.sakeId,
           scanId: (data as { id?: string })?.id,
-        }),
-      );
+        });
+        queryClient.invalidateQueries({ queryKey: ['social', 'feed'] });
+        queryClient.invalidateQueries({ queryKey: ['social', 'userActivity'] });
+      });
     },
   });
 }
