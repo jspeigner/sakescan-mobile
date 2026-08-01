@@ -1,3 +1,5 @@
+import { getBackendBaseUrl } from './backend-api';
+
 export interface RetailerInfo {
   name: string;
   address: string;
@@ -9,11 +11,9 @@ export interface RetailerInfo {
   specialization?: string;
 }
 
-const BACKEND_URL =
-  process.env.EXPO_PUBLIC_BACKEND_URL?.trim() || process.env.EXPO_PUBLIC_VIBECODE_BACKEND_URL?.trim();
-
 /**
- * Search for retailers that sell a specific sake via backend API
+ * Search for retailers that sell a specific sake via backend API.
+ * Note: `/api/retailers` may not exist on sakescan.com yet — returns [] on failure.
  */
 export async function findSakeRetailers(
   sakeName: string,
@@ -24,11 +24,7 @@ export async function findSakeRetailers(
   longitude?: number
 ): Promise<RetailerInfo[]> {
   try {
-    if (!BACKEND_URL) {
-      return [];
-    }
-
-    const response = await fetch(`${BACKEND_URL}/api/retailers`, {
+    const response = await fetch(`${getBackendBaseUrl()}/api/retailers`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sakeName, brewery, city, region, latitude, longitude }),

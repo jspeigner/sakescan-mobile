@@ -163,6 +163,10 @@ export default function SakeDetailScreen() {
   const tasting = resolveSakeTastingFields(supabaseSake);
   const typeExplainer = findTypeExplainer(supabaseSake.type);
 
+  const galleryUrls = (supabaseSake.gallery_images ?? [])
+    .map((u) => resolveSakeImageUrl(u) ?? u)
+    .filter((u): u is string => typeof u === 'string' && u.length > 0);
+
   const sake = {
     id: supabaseSake.id,
     name: supabaseSake.name ?? 'Unknown',
@@ -178,6 +182,11 @@ export default function SakeDetailScreen() {
     riceType: supabaseSake.rice_variety ?? 'N/A',
     smv: supabaseSake.smv,
     acidity: supabaseSake.acidity,
+    yeasts: supabaseSake.yeasts,
+    waterSource: supabaseSake.water_source,
+    filtrationMethod: supabaseSake.filtration_method,
+    baseIngredients: supabaseSake.base_ingredients,
+    galleryUrls,
     tastingNotes: tasting.tastingNotes,
     foodPairings: tasting.foodPairings,
     flavorProfile: tasting.flavorProfile,
@@ -463,7 +472,62 @@ export default function SakeDetailScreen() {
                 </Text>
               </View>
             )}
+            {sake.yeasts ? (
+              <View style={{ width: '45%' }}>
+                <Text className="text-xs font-medium mb-2 uppercase tracking-wide" style={{ color: colors.textSecondary }}>Yeast</Text>
+                <Text className="text-base font-bold" style={{ color: colors.text }} numberOfLines={3}>
+                  {sake.yeasts}
+                </Text>
+              </View>
+            ) : null}
+            {sake.waterSource ? (
+              <View style={{ width: '45%' }}>
+                <Text className="text-xs font-medium mb-2 uppercase tracking-wide" style={{ color: colors.textSecondary }}>Water</Text>
+                <Text className="text-base font-bold" style={{ color: colors.text }} numberOfLines={3}>
+                  {sake.waterSource}
+                </Text>
+              </View>
+            ) : null}
+            {sake.filtrationMethod ? (
+              <View style={{ width: '45%' }}>
+                <Text className="text-xs font-medium mb-2 uppercase tracking-wide" style={{ color: colors.textSecondary }}>Filtration</Text>
+                <Text className="text-base font-bold" style={{ color: colors.text }} numberOfLines={3}>
+                  {sake.filtrationMethod}
+                </Text>
+              </View>
+            ) : null}
+            {sake.baseIngredients ? (
+              <View style={{ width: '45%' }}>
+                <Text className="text-xs font-medium mb-2 uppercase tracking-wide" style={{ color: colors.textSecondary }}>Ingredients</Text>
+                <Text className="text-base font-bold" style={{ color: colors.text }} numberOfLines={3}>
+                  {sake.baseIngredients}
+                </Text>
+              </View>
+            ) : null}
           </View>
+
+          {sake.galleryUrls.length > 0 && (
+            <View className="mb-6">
+              <Text className="text-xs font-medium mb-3 uppercase tracking-wide" style={{ color: colors.textSecondary }}>
+                Gallery
+              </Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={{ flexGrow: 0 }}
+                contentContainerStyle={{ gap: 10 }}
+              >
+                {sake.galleryUrls.map((uri, idx) => (
+                  <Image
+                    key={`${uri}-${idx}`}
+                    source={{ uri }}
+                    style={{ width: 140, height: 180, borderRadius: 12, backgroundColor: colors.surfaceSecondary }}
+                    resizeMode="cover"
+                  />
+                ))}
+              </ScrollView>
+            </View>
+          )}
 
           {/* Flavor Profile */}
           {sake.flavorProfile.length > 0 && (

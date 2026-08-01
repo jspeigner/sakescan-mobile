@@ -4,6 +4,7 @@ import { decode } from 'base64-arraybuffer';
 import { supabase } from './supabase';
 import type {
   Sake,
+  Brewery,
   Rating,
   User,
   ScanWithSake,
@@ -14,6 +15,7 @@ import type {
   BreweryCatalogRow,
   MenuPriceSighting,
 } from './database.types';
+import { uploadScanImage } from './backend-api';
 
 // ============ SAKE QUERIES ============
 
@@ -527,21 +529,37 @@ export function useCreateScan() {
       sakeId: string;
       imageUrl?: string;
       ocrRawText?: string;
+      catalogShareOptIn?: boolean;
     }) => {
+      // DB nulls non-https scanned_image_url — upload local file:// first.
+      let scannedImageUrl: string | null = null;
+      if (params.imageUrl) {
+        if (/^https:\/\//i.test(params.imageUrl)) {
+          scannedImageUrl = params.imageUrl;
+        } else {
+          try {
+            scannedImageUrl = await uploadScanImage({ localUri: params.imageUrl });
+          } catch (err) {
+            console.warn('[useCreateScan] scan image upload failed:', err);
+          }
+        }
+      }
+
       const { data, error } = await supabase
         .from('scans')
         .insert({
           user_id: params.userId,
           sake_id: params.sakeId,
-          scanned_image_url: params.imageUrl ?? null,
+          scanned_image_url: scannedImageUrl,
           ocr_raw_text: params.ocrRawText ?? null,
           matched: true,
+          catalog_share_opt_in: params.catalogShareOptIn ?? false,
         } as Record<string, unknown>)
         .select()
         .single();
 
       if (error) throw error;
-      return data;
+      return data as { id: string; scanned_image_url: string | null };
     },
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['scans'] });
@@ -554,6 +572,25 @@ export function useCreateScan() {
         }),
       );
     },
+  });
+}
+
+/** Full brewery row from `breweries` table (name match, case-insensitive). */
+export function useBreweryByName(breweryName: string | undefined) {
+  return useQuery({
+    queryKey: ['brewery', 'by-name', breweryName],
+    queryFn: async () => {
+      if (!breweryName?.trim()) return null;
+      const { data, error } = await supabase
+        .from('breweries')
+        .select('*')
+        .ilike('name', breweryName.trim())
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return (data as Brewery | null) ?? null;
+    },
+    enabled: !!breweryName?.trim(),
   });
 }
 

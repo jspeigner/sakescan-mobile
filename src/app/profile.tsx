@@ -125,17 +125,23 @@ export default function ProfileScreen() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
     try {
-      // Prefer DB RPC (deployed) over Edge Function (may be undeployed → 404).
+      // Prefer DB RPC → Edge Function → web /api/delete-account (MOBILE_API.md).
       const { error: rpcError } = await supabase.rpc('delete_own_account');
 
       if (rpcError) {
         console.warn('[Profile] delete_own_account RPC failed, trying Edge Function:', rpcError.message);
-        const { data: fnData, error: fnError } = await supabase.functions.invoke('delete-user', {
-          body: { user_id: user?.id },
-        });
-        if (fnError) throw fnError;
-        if (fnData && typeof fnData === 'object' && 'error' in fnData && fnData.error) {
-          throw new Error(String(fnData.error));
+        try {
+          const { data: fnData, error: fnError } = await supabase.functions.invoke('delete-user', {
+            body: { user_id: user?.id },
+          });
+          if (fnError) throw fnError;
+          if (fnData && typeof fnData === 'object' && 'error' in fnData && fnData.error) {
+            throw new Error(String(fnData.error));
+          }
+        } catch (edgeErr) {
+          console.warn('[Profile] Edge delete-user failed, trying web API:', edgeErr);
+          const { deleteAccountViaBackend } = await import('@/lib/backend-api');
+          await deleteAccountViaBackend();
         }
       }
 
