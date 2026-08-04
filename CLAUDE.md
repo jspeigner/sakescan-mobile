@@ -133,6 +133,18 @@
 
 <appstore>
   Store releases use Expo EAS Build / Submit plus Apple App Store Connect and Google Play Console. Follow current Expo, Apple, and Google documentation for signing, metadata, and review. Do not commit secrets or keys.
+
+  <version_display>
+    The in-app Profile version MUST always match the TestFlight / App Store binary.
+    - NEVER hardcode a version string in UI (no "SakeScan v1.0.0").
+    - Always use getAppVersionLabel() from src/lib/app-version.ts (reads native binary via expo-application).
+    - Source of truth for store builds: CFBundleShortVersionString + CFBundleVersion (shown as "SakeScan vX.Y.Z (N)").
+    - After any version/build bump or EAS production build (autoIncrement), run:
+        bun run version:sync
+        bun run version:check
+      Commit the synced app.json, Info.plist, project.pbxproj, and package.json.
+    - Do not ship a TestFlight build if version:check fails.
+  </version_display>
 </appstore> 
 
 <skills>
