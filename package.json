@@ -1,6 +1,6 @@
 {
   "name": "template-app-53",
-  "version": "1.0.0",
+  "version": "2.1.7",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
@@ -9,7 +9,9 @@
     "web": "DARK_MODE=class expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
-    "postinstall": "node scripts/apply-react-native-menu-overflow-patch.cjs"
+    "postinstall": "node scripts/apply-react-native-menu-overflow-patch.cjs",
+    "version:sync": "node scripts/sync-ios-version-from-app-json.mjs",
+    "version:check": "node scripts/check-app-version-sync.mjs"
   },
   "dependencies": {
     "@babel/plugin-proposal-export-namespace-from": "^7.18.9",
