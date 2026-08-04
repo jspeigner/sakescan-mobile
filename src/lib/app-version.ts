@@ -4,8 +4,15 @@ import Constants from 'expo-constants';
 /**
  * Marketing version shown to users (e.g. "2.1.7").
  * Prefers the native binary value so Profile matches TestFlight / App Store.
+ * In Expo Go, nativeApplicationVersion is the Expo Go client version, so use
+ * the project version from app config instead.
  */
 export function getAppVersion(): string {
+  // appOwnership === 'expo' only in Expo Go (not standalone / dev clients).
+  if (Constants.appOwnership === 'expo') {
+    return Constants.expoConfig?.version ?? '0.0.0';
+  }
+
   return (
     Application.nativeApplicationVersion ??
     Constants.expoConfig?.version ??
