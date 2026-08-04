@@ -31,6 +31,7 @@ import { useUserScans, useUserRatings, useUpdateUserProfile, useUserProfile, use
 import { useFollowCounts, isSocialEnabled } from '@/lib/social-hooks';
 import { useSubscription } from '@/lib/subscription-context';
 import { FREE_MENU_SCANS_PER_MONTH } from '@/lib/purchases';
+import { getAppVersionLabel } from '@/lib/app-version';
 import type { ScanWithSake } from '@/lib/database.types';
 
 export default function ProfileScreen() {
@@ -842,7 +843,7 @@ export default function ProfileScreen() {
 
         {/* App Info */}
         <View className="mx-5 items-center mt-4 mb-8">
-          <Text className="text-[#8B8B8B] text-sm">SakeScan v1.0.0</Text>
+          <Text className="text-[#8B8B8B] text-sm">{getAppVersionLabel()}</Text>
           <Text className="text-[#B5B5B5] text-xs mt-1">Made with love for sake enthusiasts</Text>
         </View>
       </ScrollView>
