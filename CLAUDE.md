@@ -163,4 +163,7 @@ Future enhancements needed:
 - Optional on-device OCR (ML Kit) as an alternative to cloud vision
 - Richer retailer / purchase flows
 - Expanded review and flavor metadata from the database
+
+Backend sync: keep this app aligned with jspeigner/Sakescan (MOBILE_API.md, schema, /api/*).
+See AGENTS.md and docs/BACKEND_SYNC_AUTOMATION.md for the Cursor Automation playbook.
 </sakescan_app>

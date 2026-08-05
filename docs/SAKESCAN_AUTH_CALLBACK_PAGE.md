@@ -53,14 +53,32 @@ Create a page at **`https://sakescan.com/auth/callback`** (or `/auth/callback.ht
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
       if (accessToken && refreshToken) {
-        // Must match expo.scheme in app.json (see src/lib/app-linking.ts)
+        // Must match expo.scheme in app.json (see src/lib/app-linking.ts).
+        // Production app uses `sakescan` — do NOT use legacy `vibecode`.
         const APP_SCHEME = 'sakescan';
         const appUrl = APP_SCHEME + '://reset-password#' + hash;
         const openAppLink = document.getElementById('openApp');
         openAppLink.href = appUrl;
 
+        // Strip tokens from the address bar after capturing them for the deep link.
+        try {
+          const clean = new URL(window.location.href);
+          ['access_token', 'refresh_token', 'token', 'token_hash', 'code', 'type'].forEach((k) => {
+            clean.searchParams.delete(k);
+          });
+          clean.hash = '';
+          window.history.replaceState({}, '', clean.pathname + clean.search);
+        } catch (_) { /* ignore */ }
+
         if (isMobile) {
           window.location.href = appUrl;
+          // If the app does not open, surface a manual Open button.
+          setTimeout(function () {
+            document.getElementById('message').textContent =
+              'Tap below to open SakeScan and finish resetting your password.';
+            openAppLink.style.display = 'inline-block';
+            openAppLink.textContent = 'Open SakeScan App';
+          }, 1800);
         } else {
           document.getElementById('message').textContent =
             'Open the SakeScan app on your phone to complete your password reset. Or click the button below if the app is on this device.';
@@ -76,6 +94,8 @@ Create a page at **`https://sakescan.com/auth/callback`** (or `/auth/callback.ht
 </body>
 </html>
 ```
+
+> **Contract note:** Live `jspeigner/Sakescan` `AuthCallback.tsx` still deep-links `vibecode://…` in some builds. Mobile production scheme is `sakescan` (`app.json`). Prefer fixing the web callback to `sakescan://reset-password#…` so password-reset emails open the shipped app.
 
 ## 2. Supabase configuration
 

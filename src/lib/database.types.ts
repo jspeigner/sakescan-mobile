@@ -64,7 +64,16 @@ export interface Database {
           alcohol_percentage: number | null;
           smv: number | null;
           acidity: number | null;
+          yeasts: string | null;
+          water_source: string | null;
+          filtration_method: string | null;
+          base_ingredients: string | null;
           image_url: string | null;
+          image_source: 'retailer' | 'user_scan' | 'web_discover' | 'admin' | string | null;
+          image_quality: 't1' | 't2' | 't3' | string | null;
+          image_verified_at: string | null;
+          gallery_images: string[] | null;
+          external_id: string | null;
           average_rating: number | null;
           total_ratings: number;
           created_at: string;
@@ -89,7 +98,16 @@ export interface Database {
           alcohol_percentage?: number | null;
           smv?: number | null;
           acidity?: number | null;
+          yeasts?: string | null;
+          water_source?: string | null;
+          filtration_method?: string | null;
+          base_ingredients?: string | null;
           image_url?: string | null;
+          image_source?: string | null;
+          image_quality?: string | null;
+          image_verified_at?: string | null;
+          gallery_images?: string[] | null;
+          external_id?: string | null;
           average_rating?: number | null;
           total_ratings?: number;
           created_at?: string;
@@ -114,9 +132,83 @@ export interface Database {
           alcohol_percentage?: number | null;
           smv?: number | null;
           acidity?: number | null;
+          yeasts?: string | null;
+          water_source?: string | null;
+          filtration_method?: string | null;
+          base_ingredients?: string | null;
           image_url?: string | null;
+          image_source?: string | null;
+          image_quality?: string | null;
+          image_verified_at?: string | null;
+          gallery_images?: string[] | null;
+          external_id?: string | null;
           average_rating?: number | null;
           total_ratings?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      breweries: {
+        Row: {
+          id: string;
+          name: string;
+          prefecture: string | null;
+          region: string | null;
+          address: string | null;
+          phone: string | null;
+          website: string | null;
+          email: string | null;
+          founded_year: number | null;
+          representative: string | null;
+          brands: string[] | null;
+          description: string | null;
+          visiting_info: string | null;
+          tour_available: boolean | null;
+          image_url: string | null;
+          gallery_images: string[] | null;
+          source_url: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          prefecture?: string | null;
+          region?: string | null;
+          address?: string | null;
+          phone?: string | null;
+          website?: string | null;
+          email?: string | null;
+          founded_year?: number | null;
+          representative?: string | null;
+          brands?: string[] | null;
+          description?: string | null;
+          visiting_info?: string | null;
+          tour_available?: boolean | null;
+          image_url?: string | null;
+          gallery_images?: string[] | null;
+          source_url?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          prefecture?: string | null;
+          region?: string | null;
+          address?: string | null;
+          phone?: string | null;
+          website?: string | null;
+          email?: string | null;
+          founded_year?: number | null;
+          representative?: string | null;
+          brands?: string[] | null;
+          description?: string | null;
+          visiting_info?: string | null;
+          tour_available?: boolean | null;
+          image_url?: string | null;
+          gallery_images?: string[] | null;
+          source_url?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -129,6 +221,7 @@ export interface Database {
           scanned_image_url: string | null;
           ocr_raw_text: string | null;
           matched: boolean;
+          catalog_share_opt_in: boolean;
           created_at: string;
         };
         Insert: {
@@ -138,6 +231,7 @@ export interface Database {
           scanned_image_url?: string | null;
           ocr_raw_text?: string | null;
           matched?: boolean;
+          catalog_share_opt_in?: boolean;
           created_at?: string;
         };
         Update: {
@@ -147,6 +241,7 @@ export interface Database {
           scanned_image_url?: string | null;
           ocr_raw_text?: string | null;
           matched?: boolean;
+          catalog_share_opt_in?: boolean;
           created_at?: string;
         };
       };
@@ -544,9 +639,18 @@ export type BreweryCatalogRow =
 // Convenience types
 export type User = Database['public']['Tables']['users']['Row'];
 export type Sake = Database['public']['Tables']['sake']['Row'];
+export type Brewery = Database['public']['Tables']['breweries']['Row'];
 export type Scan = Database['public']['Tables']['scans']['Row'];
 export type Rating = Database['public']['Tables']['ratings']['Row'];
 export type Favorite = Database['public']['Tables']['favorites']['Row'];
+
+/** True when catalog image is missing or weak (t2/t3/null) — prompt catalog share. */
+export function sakeNeedsCatalogImage(sake: Pick<Sake, 'image_url' | 'image_quality'> | null | undefined): boolean {
+  if (!sake) return true;
+  if (!sake.image_url) return true;
+  const q = sake.image_quality?.toLowerCase() ?? null;
+  return q === null || q === 't2' || q === 't3';
+}
 export type MenuScan = Database['public']['Tables']['menu_scans']['Row'];
 export type MenuScanItem = Database['public']['Tables']['menu_scan_items']['Row'];
 export type ScanFeedback = Database['public']['Tables']['scan_feedback']['Row'];
