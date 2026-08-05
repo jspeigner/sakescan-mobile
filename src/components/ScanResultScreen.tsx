@@ -39,6 +39,8 @@ import { buildSakeShareMessage } from '@/lib/share-sake';
 import { catalogSakeToScanInfo } from '@/lib/sake-catalog';
 import { getFlavorTagTip } from '@/lib/sake-learn';
 import { logScanConfirm, logScanWrong } from '@/lib/scan-feedback';
+import { contributeScanImage } from '@/lib/backend-api';
+import { sakeNeedsCatalogImage } from '@/lib/database.types';
 import type { ScanCandidate } from '@/lib/openai-scan';
 
 interface ScanResultScreenProps {
@@ -84,9 +86,13 @@ export default function ScanResultScreen({
   const [confirmed, setConfirmed] = useState(false);
   const [showWrongPicker, setShowWrongPicker] = useState(ambiguous && initialCandidates.length > 1);
   const [pendingCandidateId, setPendingCandidateId] = useState<string | null>(null);
+  const [savedScanId, setSavedScanId] = useState<string | null>(null);
+  const [showContributePrompt, setShowContributePrompt] = useState(false);
+  const [contributeStatus, setContributeStatus] = useState<'idle' | 'sharing' | 'shared' | 'declined'>('idle');
   const addScan = useScanHistoryStore((s) => s.addScan);
 
   const { data: pendingCandidateSake } = useSake(pendingCandidateId ?? undefined);
+  const { data: catalogSake } = useSake(catalogSakeId);
 
   const heroOpacity = useSharedValue(0);
   const contentY = useSharedValue(32);
@@ -185,13 +191,16 @@ export default function ScanResultScreen({
 
         console.log('✅ Sake saved to Supabase with ID:', sakeId);
 
-        await createScan.mutateAsync({
+        const scanRow = await createScan.mutateAsync({
           userId: user.id,
           sakeId,
           imageUrl: imageUri,
           ocrRawText: JSON.stringify(initialSakeInfo),
         });
 
+        if (scanRow?.id) {
+          setSavedScanId(scanRow.id);
+        }
         console.log('✅ Scan record saved to Supabase');
       } catch (error) {
         console.error('Failed to save scan:', error);
@@ -238,7 +247,46 @@ export default function ScanResultScreen({
     });
     setConfirmed(true);
     setShowWrongPicker(false);
+    // Offer catalog contribution when the matched sake needs a better photo.
+    if (savedScanId && sakeNeedsCatalogImage(catalogSake)) {
+      setShowContributePrompt(true);
+    }
   };
+
+  const handleContributeAccept = async () => {
+    if (!savedScanId) return;
+    setContributeStatus('sharing');
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      await contributeScanImage({
+        scanId: savedScanId,
+        localUri: imageUri,
+        promoteNow: true,
+      });
+      setContributeStatus('shared');
+      setShowContributePrompt(false);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err) {
+      console.error('Catalog contribute failed:', err);
+      setContributeStatus('idle');
+    }
+  };
+
+  const handleContributeDecline = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setContributeStatus('declined');
+    setShowContributePrompt(false);
+  };
+
+  // If user confirmed before scan row finished saving, show contribute once ready.
+  useEffect(() => {
+    if (!confirmed || !savedScanId || contributeStatus !== 'idle' || showContributePrompt) return;
+    // Wait for catalog row when we have an id so we don't prompt T1 sakes by mistake.
+    if (catalogSakeId && catalogSake === undefined) return;
+    if (sakeNeedsCatalogImage(catalogSake ?? null)) {
+      setShowContributePrompt(true);
+    }
+  }, [confirmed, savedScanId, catalogSake, catalogSakeId, contributeStatus, showContributePrompt]);
 
   const handleWrongSake = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -471,6 +519,55 @@ export default function ScanResultScreen({
               <Text className="ml-1.5 text-sm text-[#6B6B6B]">Search or edit match</Text>
             </Pressable>
           </View>
+
+          {(showContributePrompt || contributeStatus === 'shared') && (
+            <View
+              className="mb-6 rounded-2xl px-4 py-4"
+              style={{ backgroundColor: '#FFF8F0', borderWidth: 1, borderColor: '#F0D9B5' }}
+            >
+              {contributeStatus === 'shared' ? (
+                <View className="flex-row items-center">
+                  <Check size={18} color="#1F7A3C" />
+                  <Text className="ml-2 text-sm font-semibold" style={{ color: '#1F7A3C' }}>
+                    Thanks — photo shared for the catalog
+                  </Text>
+                </View>
+              ) : (
+                <>
+                  <Text className="text-[#1a1a1a] text-base font-semibold mb-1">
+                    Help improve SakeScan
+                  </Text>
+                  <Text className="text-[#6B6B6B] text-sm mb-3">
+                    Share this photo for the catalog? Only used if this sake is missing a strong product shot.
+                  </Text>
+                  <View className="flex-row gap-2">
+                    <Pressable
+                      onPress={handleContributeAccept}
+                      disabled={contributeStatus === 'sharing'}
+                      className="flex-1 flex-row items-center justify-center rounded-xl py-3"
+                      style={{ backgroundColor: '#BC002D', opacity: contributeStatus === 'sharing' ? 0.7 : 1 }}
+                    >
+                      {contributeStatus === 'sharing' ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Text className="text-white text-sm font-semibold">Share photo</Text>
+                      )}
+                    </Pressable>
+                    <Pressable
+                      onPress={handleContributeDecline}
+                      disabled={contributeStatus === 'sharing'}
+                      className="flex-1 flex-row items-center justify-center rounded-xl py-3"
+                      style={{ backgroundColor: '#F5F3EE' }}
+                    >
+                      <Text className="text-sm font-semibold" style={{ color: '#6B6B6B' }}>
+                        Not now
+                      </Text>
+                    </Pressable>
+                  </View>
+                </>
+              )}
+            </View>
+          )}
 
           {showWrongPicker && candidates.length > 0 && (
             <View className="mb-6">
