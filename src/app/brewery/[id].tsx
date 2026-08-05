@@ -1,10 +1,20 @@
-import { Text, View, ScrollView, Pressable, ActivityIndicator, Share } from 'react-native';
+import { Text, View, ScrollView, Pressable, ActivityIndicator, Share, Linking } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, router } from 'expo-router';
-import { ChevronLeft, Share2, Star, Building2 } from 'lucide-react-native';
+import {
+  ChevronLeft,
+  Share2,
+  Star,
+  Building2,
+  MapPin,
+  Globe,
+  Phone,
+  Calendar,
+} from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { useSakeByBrewery } from '@/lib/supabase-hooks';
+import { useBreweryByName, useSakeByBrewery } from '@/lib/supabase-hooks';
+import { sakeBelongsToBrewery } from '@/lib/brewery-name';
 import { resolveSakeImageUrl } from '@/lib/supabase';
 import { useTheme } from '@/lib/theme-context';
 
@@ -13,11 +23,12 @@ export default function BreweryScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
 
-  // Decode brewery name from URL parameter
   const breweryName = id ? decodeURIComponent(id) : '';
 
-  // Exact brewery match (case-insensitive) — avoids search false negatives
-  const { data: brewerySakes, isLoading } = useSakeByBrewery(breweryName);
+  const { data: brewery, isLoading: breweryLoading } = useBreweryByName(breweryName);
+  const { data: brewerySakes, isLoading: sakesLoading } = useSakeByBrewery(breweryName);
+
+  const isLoading = breweryLoading || sakesLoading;
 
   const handleSakePress = async (sakeId: string) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -36,6 +47,16 @@ export default function BreweryScreen() {
     }
   };
 
+  const openUrl = async (url: string) => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const href = url.startsWith('http') ? url : `https://${url}`;
+    try {
+      await Linking.openURL(href);
+    } catch {
+      /* ignore */
+    }
+  };
+
   if (isLoading) {
     return (
       <View className="flex-1 items-center justify-center" style={{ backgroundColor: colors.background }}>
@@ -44,13 +65,13 @@ export default function BreweryScreen() {
     );
   }
 
-  // Normalize for residual mismatches (whitespace / case)
-  const normalize = (value: string) => value.trim().toLowerCase();
-  const filteredSakes = (brewerySakes ?? []).filter(
-    (s) => normalize(s.brewery ?? '') === normalize(breweryName),
+  // Prefix / corporate-suffix aware — exact equality emptied lineups for "Co.,Ltd" rows.
+  const catalogName = brewery?.name ?? breweryName;
+  const filteredSakes = (brewerySakes ?? []).filter((s) =>
+    sakeBelongsToBrewery(s.brewery, catalogName),
   );
 
-  if (filteredSakes.length === 0) {
+  if (filteredSakes.length === 0 && !brewery) {
     return (
       <View className="flex-1" style={{ backgroundColor: colors.background }}>
         <View
@@ -79,16 +100,22 @@ export default function BreweryScreen() {
     );
   }
 
-  // Calculate stats from the sake
   const avgRating = filteredSakes.length > 0
     ? filteredSakes.reduce((sum, s) => sum + (s.average_rating ?? 0), 0) / filteredSakes.length
     : 0;
 
-  const region = filteredSakes[0]?.region ?? filteredSakes[0]?.prefecture ?? 'Japan';
+  const displayName = brewery?.name ?? breweryName;
+  const region =
+    brewery?.prefecture ??
+    brewery?.region ??
+    filteredSakes[0]?.region ??
+    filteredSakes[0]?.prefecture ??
+    'Japan';
+  const heroImage = brewery?.image_url ?? null;
+  const gallery = (brewery?.gallery_images ?? []).filter(Boolean);
 
   return (
     <View className="flex-1" style={{ backgroundColor: colors.background }}>
-      {/* Header - Absolute positioned */}
       <View
         className="absolute top-0 left-0 right-0 z-10 flex-row items-center justify-between px-5"
         style={{ paddingTop: insets.top + 8 }}
@@ -120,18 +147,24 @@ export default function BreweryScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 100 }}
       >
-        {/* Hero - Building icon instead of image */}
         <View
           style={{ height: 220, backgroundColor: colors.primaryLight }}
-          className="items-center justify-center"
+          className="items-center justify-center overflow-hidden"
         >
-          <Building2 size={64} color={colors.primary} />
+          {heroImage ? (
+            <Image
+              source={{ uri: heroImage }}
+              style={{ width: '100%', height: 220 }}
+              contentFit="cover"
+            />
+          ) : (
+            <Building2 size={64} color={colors.primary} />
+          )}
         </View>
 
-        {/* Logo */}
         <View className="items-center" style={{ marginTop: -50 }}>
           <View
-            className="w-24 h-24 rounded-full items-center justify-center"
+            className="w-24 h-24 rounded-full items-center justify-center overflow-hidden"
             style={{
               backgroundColor: colors.surface,
               borderWidth: 4,
@@ -143,24 +176,29 @@ export default function BreweryScreen() {
               elevation: 4,
             }}
           >
-            <Building2 size={40} color={colors.primary} />
+            {heroImage ? (
+              <Image source={{ uri: heroImage }} style={{ width: 96, height: 96 }} contentFit="cover" />
+            ) : (
+              <Building2 size={40} color={colors.primary} />
+            )}
           </View>
         </View>
 
-        {/* Brewery Info */}
         <View className="items-center px-5 pt-4">
           <Text
             className="text-center"
             style={{ fontFamily: 'NotoSerifJP_600SemiBold', fontSize: 26, fontWeight: '600', color: colors.text }}
           >
-            {breweryName}
+            {displayName}
           </Text>
-          <Text className="text-base mt-1" style={{ color: colors.primary }}>
-            {region}, Japan
-          </Text>
+          <View className="flex-row items-center mt-1">
+            <MapPin size={14} color={colors.primary} />
+            <Text className="text-base ml-1" style={{ color: colors.primary }}>
+              {region}, Japan
+            </Text>
+          </View>
         </View>
 
-        {/* Stats Row */}
         <View className="flex-row justify-center px-5 py-6 gap-3">
           <View
             className="items-center py-3 px-5 rounded-xl"
@@ -181,9 +219,102 @@ export default function BreweryScreen() {
               <Text className="text-xs mt-1" style={{ color: colors.textTertiary }}>RATING</Text>
             </View>
           )}
+          {brewery?.founded_year != null && (
+            <View
+              className="items-center py-3 px-5 rounded-xl"
+              style={{ borderWidth: 1, borderColor: colors.borderLight, minWidth: 90 }}
+            >
+              <View className="flex-row items-center">
+                <Calendar size={14} color={colors.primary} />
+                <Text className="text-xl font-bold ml-1" style={{ color: colors.primary }}>
+                  {brewery.founded_year}
+                </Text>
+              </View>
+              <Text className="text-xs mt-1" style={{ color: colors.textTertiary }}>FOUNDED</Text>
+            </View>
+          )}
         </View>
 
-        {/* Our Collection */}
+        {brewery?.description ? (
+          <View className="px-5 mb-5">
+            <Text className="text-xs font-medium mb-2 uppercase tracking-wide" style={{ color: colors.textSecondary }}>
+              About
+            </Text>
+            <Text className="text-base leading-7" style={{ color: colors.text }}>
+              {brewery.description}
+            </Text>
+          </View>
+        ) : null}
+
+        {(brewery?.address || brewery?.phone || brewery?.website || brewery?.visiting_info) && (
+          <View className="px-5 mb-5">
+            <Text className="text-xs font-medium mb-3 uppercase tracking-wide" style={{ color: colors.textSecondary }}>
+              Visit & Contact
+            </Text>
+            {brewery.address ? (
+              <Text className="text-sm mb-2" style={{ color: colors.text }}>
+                {brewery.address}
+              </Text>
+            ) : null}
+            {brewery.visiting_info ? (
+              <Text className="text-sm mb-3 leading-6" style={{ color: colors.textSecondary }}>
+                {brewery.visiting_info}
+                {brewery.tour_available ? ' · Tours available' : ''}
+              </Text>
+            ) : null}
+            <View className="flex-row flex-wrap gap-2">
+              {brewery.website ? (
+                <Pressable
+                  onPress={() => openUrl(brewery.website!)}
+                  className="flex-row items-center px-3 py-2 rounded-full"
+                  style={{ backgroundColor: colors.surfaceSecondary }}
+                >
+                  <Globe size={14} color={colors.primary} />
+                  <Text className="ml-1.5 text-sm font-medium" style={{ color: colors.primary }}>Website</Text>
+                </Pressable>
+              ) : null}
+              {brewery.phone ? (
+                <Pressable
+                  onPress={() => Linking.openURL(`tel:${brewery.phone}`)}
+                  className="flex-row items-center px-3 py-2 rounded-full"
+                  style={{ backgroundColor: colors.surfaceSecondary }}
+                >
+                  <Phone size={14} color={colors.primary} />
+                  <Text className="ml-1.5 text-sm font-medium" style={{ color: colors.primary }}>
+                    {brewery.phone}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </View>
+        )}
+
+        {gallery.length > 0 && (
+          <View className="mb-5">
+            <Text
+              className="text-xs font-medium mb-3 uppercase tracking-wide px-5"
+              style={{ color: colors.textSecondary }}
+            >
+              Gallery
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ flexGrow: 0 }}
+              contentContainerStyle={{ paddingHorizontal: 20, gap: 10 }}
+            >
+              {gallery.map((uri, idx) => (
+                <Image
+                  key={`${uri}-${idx}`}
+                  source={{ uri }}
+                  style={{ width: 160, height: 120, borderRadius: 12 }}
+                  contentFit="cover"
+                />
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
         <View className="px-5">
           <View className="flex-row justify-between items-center mb-4">
             <Text className="text-lg font-bold" style={{ color: colors.text }}>Collection</Text>
