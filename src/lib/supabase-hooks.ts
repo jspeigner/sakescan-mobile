@@ -16,6 +16,7 @@ import type {
   MenuPriceSighting,
 } from './database.types';
 import { uploadScanImage } from './backend-api';
+import { brewerySakeNamePattern, stripBreweryCorporateSuffix } from './brewery-name';
 
 // ============ SAKE QUERIES ============
 
@@ -75,17 +76,22 @@ export function useSearchSake(query: string) {
   });
 }
 
-/** Exact brewery match (case-insensitive) for brewery detail pages. */
+/**
+ * Sake lineup for a brewery detail page.
+ * Uses case-insensitive prefix match so rows like "Akita Meijyo Co.,Ltd"
+ * still appear under catalog brewery "Akita Meijyo" (web parity).
+ */
 export function useSakeByBrewery(breweryName: string | undefined) {
   return useQuery({
     queryKey: ['sake', 'brewery', breweryName],
     queryFn: async () => {
       if (!breweryName?.trim()) return [];
 
+      const pattern = brewerySakeNamePattern(stripBreweryCorporateSuffix(breweryName));
       const { data, error } = await supabase
         .from('sake')
         .select('*')
-        .ilike('brewery', breweryName.trim())
+        .ilike('brewery', pattern)
         .order('average_rating', { ascending: false, nullsFirst: false });
 
       if (error) throw error;
@@ -585,10 +591,11 @@ export function useBreweryByName(breweryName: string | undefined) {
     queryKey: ['brewery', 'by-name', breweryName],
     queryFn: async () => {
       if (!breweryName?.trim()) return null;
+      const lookup = stripBreweryCorporateSuffix(breweryName);
       const { data, error } = await supabase
         .from('breweries')
         .select('*')
-        .ilike('name', breweryName.trim())
+        .ilike('name', lookup)
         .limit(1)
         .maybeSingle();
       if (error) throw error;
