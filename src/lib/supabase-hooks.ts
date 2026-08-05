@@ -16,7 +16,11 @@ import type {
   MenuPriceSighting,
 } from './database.types';
 import { uploadScanImage } from './backend-api';
-import { brewerySakeNamePattern, stripBreweryCorporateSuffix } from './brewery-name';
+import {
+  brewerySakeNamePattern,
+  sakeBreweryMatchesCatalogName,
+  stripBreweryCorporateSuffix,
+} from './brewery-name';
 
 // ============ SAKE QUERIES ============
 
@@ -78,8 +82,9 @@ export function useSearchSake(query: string) {
 
 /**
  * Sake lineup for a brewery detail page.
- * Uses case-insensitive prefix match so rows like "Akita Meijyo Co.,Ltd"
- * still appear under catalog brewery "Akita Meijyo" (web parity).
+ * Prefix `ilike` finds corporate-suffix variants ("Akita Meijyo Co.,Ltd");
+ * client-side equality after suffix strip rejects sibling houses ("Ito" ≠ "Ito Shuzo").
+ * Mirrors Sakescan `fetchSakesForBreweryName` (PR #28).
  */
 export function useSakeByBrewery(breweryName: string | undefined) {
   return useQuery({
@@ -87,15 +92,19 @@ export function useSakeByBrewery(breweryName: string | undefined) {
     queryFn: async () => {
       if (!breweryName?.trim()) return [];
 
-      const pattern = brewerySakeNamePattern(stripBreweryCorporateSuffix(breweryName));
+      // Over-fetch: prefix ilike is only a candidate filter.
+      const fetchLimit = 1000;
       const { data, error } = await supabase
         .from('sake')
         .select('*')
-        .ilike('brewery', pattern)
-        .order('average_rating', { ascending: false, nullsFirst: false });
+        .ilike('brewery', brewerySakeNamePattern(breweryName))
+        .order('average_rating', { ascending: false, nullsFirst: false })
+        .limit(fetchLimit);
 
       if (error) throw error;
-      return data as Sake[];
+      return ((data ?? []) as Sake[]).filter((row) =>
+        sakeBreweryMatchesCatalogName(row.brewery, breweryName),
+      );
     },
     enabled: !!breweryName?.trim(),
   });

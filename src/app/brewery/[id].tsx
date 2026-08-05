@@ -14,7 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useBreweryByName, useSakeByBrewery } from '@/lib/supabase-hooks';
-import { sakeBelongsToBrewery } from '@/lib/brewery-name';
+import { sakeBreweryMatchesCatalogName } from '@/lib/brewery-name';
 import { resolveSakeImageUrl } from '@/lib/supabase';
 import { useTheme } from '@/lib/theme-context';
 
@@ -65,10 +65,10 @@ export default function BreweryScreen() {
     );
   }
 
-  // Prefix / corporate-suffix aware — exact equality emptied lineups for "Co.,Ltd" rows.
+  // Prefix candidate + corporate-suffix equality (Sakescan PR #28) — rejects "Ito Shuzo" under "Ito".
   const catalogName = brewery?.name ?? breweryName;
   const filteredSakes = (brewerySakes ?? []).filter((s) =>
-    sakeBelongsToBrewery(s.brewery, catalogName),
+    sakeBreweryMatchesCatalogName(s.brewery, catalogName),
   );
 
   if (filteredSakes.length === 0 && !brewery) {

@@ -20,14 +20,24 @@ export function stripBreweryCorporateSuffix(name: string): string {
  * ("Akita Meijyo" vs "Akita Meijyo Co.,Ltd").
  */
 export function brewerySakeNamePattern(breweryName: string): string {
+  // Strip LIKE wildcards from the name; trailing % is the intentional prefix.
   const cleaned = breweryName.replace(/[%_]/g, ' ').replace(/\s+/g, ' ').trim();
   return `${cleaned}%`;
 }
 
-/** True when a sake.brewery value belongs to the given catalog brewery name. */
-export function sakeBelongsToBrewery(sakeBrewery: string | null | undefined, breweryName: string): boolean {
-  if (!sakeBrewery?.trim() || !breweryName.trim()) return false;
-  const sakeNorm = stripBreweryCorporateSuffix(sakeBrewery).toLowerCase();
-  const breweryNorm = stripBreweryCorporateSuffix(breweryName).toLowerCase();
-  return sakeNorm === breweryNorm || sakeNorm.startsWith(`${breweryNorm} `) || sakeNorm.startsWith(breweryNorm);
+/**
+ * True when a sake.brewery string belongs to the catalog brewery name.
+ * Prefix `ilike` alone is too loose for short names ("Ito" → "Ito Shuzo",
+ * "Itou"); require equality after stripping corporate suffixes on the sake side.
+ * Mirrors Sakescan `sakeBreweryMatchesCatalogName` (PR #28).
+ */
+export function sakeBreweryMatchesCatalogName(
+  sakeBreweryField: string | null | undefined,
+  catalogBreweryName: string,
+): boolean {
+  const catalog = catalogBreweryName.trim().toLowerCase();
+  if (!catalog || !sakeBreweryField?.trim()) return false;
+  const stripped = stripBreweryCorporateSuffix(sakeBreweryField).toLowerCase();
+  if (stripped === catalog) return true;
+  return sakeBreweryField.trim().toLowerCase() === catalog;
 }
