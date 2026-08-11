@@ -1,0 +1,12 @@
+{
+  "$schema": "https://www.cursor.com/schemas/environment.schema.json",
+  "install": "bun install",
+  "ports": [{ "name": "Expo Web (Metro)", "port": 8081 }],
+  "terminals": [
+    {
+      "name": "Expo Web (Metro)",
+      "command": "bun run web",
+      "description": "Expo web dev server (Metro) on http://localhost:8081. Only runnable target in the cloud VM (no native simulators). Used by Autofix / automation agents to verify fixes."
+    }
+  ]
+}
