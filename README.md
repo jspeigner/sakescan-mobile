@@ -262,7 +262,9 @@ Sake catalog, images, ratings, and user data are loaded from **Supabase** (`sake
 - `EXPO_PUBLIC_SUPABASE_URL` - Your Supabase project URL
 - `EXPO_PUBLIC_SUPABASE_ANON_KEY` or `EXPO_PUBLIC_SUPABASE_KEY` - Supabase anon/public key (starts with `eyJ...`)
 - `EXPO_PUBLIC_OPENAI_API_KEY` - OpenAI API key for client-side label scan (`openai-scan.ts`; legacy name `EXPO_PUBLIC_VIBECODE_OPENAI_API_KEY` still supported)
-- `EXPO_PUBLIC_BACKEND_URL` - Optional retailer search API base URL (legacy: `EXPO_PUBLIC_VIBECODE_BACKEND_URL`)
+- `EXPO_PUBLIC_BACKEND_URL` - SakeScan web/backend base URL for scan upload, catalog contribute, delete-account (defaults to `https://www.sakescan.com`; legacy: `EXPO_PUBLIC_VIBECODE_BACKEND_URL`)
+
+**Keeping mobile in sync with the web backend:** see [docs/BACKEND_SYNC_AUTOMATION.md](docs/BACKEND_SYNC_AUTOMATION.md) and [AGENTS.md](AGENTS.md).
 
 **Supabase Edge Function Secrets:**
 You need to set these in your Supabase dashboard (Settings → Edge Functions → Manage secrets):
