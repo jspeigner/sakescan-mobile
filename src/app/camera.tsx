@@ -336,7 +336,9 @@ export default function CameraScreen() {
         }
       } else {
         console.log('🔍 Starting sake label scan with OpenAI...');
-        const result = await scanSakeLabel(base64Image);
+        const result = await scanSakeLabel(base64Image, {
+          localImageUri: imageUri || undefined,
+        });
 
         if (result.success && result.sake) {
           console.log('✅ Successfully scanned:', result.sake.name);

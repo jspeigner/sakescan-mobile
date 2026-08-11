@@ -37,6 +37,6 @@ Full playbook + Cursor Automation setup: [docs/BACKEND_SYNC_AUTOMATION.md](docs/
 - No automated test suite exists (no `test` script, no `*.test.*`/`*.spec.*` files). Jest is installed but unused; don't assume tests exist.
 - Supabase URL and anon key are hardcoded as defaults in `src/lib/supabase.ts`, so browsing/searching the live sake catalog works with no `.env` and no secrets. Only optional features need secrets: OpenAI label scanning (`EXPO_PUBLIC_OPENAI_API_KEY`) and the WineEngine / local-identify cascade (`EXPO_PUBLIC_WINE_ENGINE_ENABLED` + `POST /api/identify-sake`). Camera scanning also can't run in web/headless anyway.
 - Web caveat: image/Skia-heavy screens (e.g. the sake detail page `sake/[id]`) can crash the headless Chrome renderer ("Aw, Snap! Error code: 4") in the cloud VM due to browser memory limits, even though Metro reports no JS errors. This is a browser-resource limitation of web mode, not an app bug — verify such screens natively when possible. Browse + search flows are reliable for smoke-testing.
-- Multi-repo ser sync agents should clone both `jspeigner/Sakescan` and this repo when needed.
+- Multi-repo sync agents should clone both `jspeigner/Sakescan` and this repo when needed.
 - Verify TypeScript with `bunx tsc --noEmit` / `bun run typecheck` when practical.
 - Do not commit secrets. Use `EXPO_PUBLIC_*` env vars; restart Metro after env changes.

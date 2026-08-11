@@ -164,3 +164,78 @@ export async function deleteAccountViaBackend(): Promise<void> {
     throw new Error(text || `delete-account failed (${res.status})`);
   }
 }
+
+/**
+ * Opt-in flag for local-first identify (`POST /api/identify-sake`) with optional
+ * WineEngine fallback. Default off — edge `scan-label` remains the primary path.
+ */
+export function isBackendIdentifyEnabled(): boolean {
+  const v = process.env.EXPO_PUBLIC_WINE_ENGINE_ENABLED?.trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes';
+}
+
+export type IdentifySakeMethod =
+  | 'hash'
+  | 'embedding'
+  | 'wineengine'
+  | 'embedding_low_confidence'
+  | 'no_match';
+
+export type IdentifySakeMatch = {
+  sakeId?: string;
+  sake_id?: string;
+  similarity?: number;
+  imageUrl?: string;
+  image_url?: string;
+  labelText?: string | null;
+  label_text?: string | null;
+};
+
+export type IdentifySakeResult = {
+  matched: boolean;
+  method?: IdentifySakeMethod | string;
+  sakeId?: string | null;
+  sake?: Record<string, unknown> | null;
+  similarity?: number | null;
+  matches?: IdentifySakeMatch[];
+  labelText?: string | null;
+  querySha256?: string;
+  cacheHit?: boolean;
+  error?: string;
+  details?: string;
+};
+
+/**
+ * Preferred backend identify (Sakescan #39 / MOBILE_API.md).
+ * Requires a public https image URL and a signed-in session.
+ */
+export async function identifySakeFromImageUrl(params: {
+  imageUrl: string;
+  limit?: number;
+  allowWineEngineFallback?: boolean;
+}): Promise<IdentifySakeResult> {
+  const token = await getAccessToken();
+  if (!token) throw new Error('Not signed in');
+  if (!isHttpsUrl(params.imageUrl)) {
+    throw new Error('imageUrl must be a public https URL');
+  }
+
+  const res = await fetch(`${getBackendBaseUrl()}/api/identify-sake`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      imageUrl: params.imageUrl,
+      limit: params.limit ?? 5,
+      allowWineEngineFallback: params.allowWineEngineFallback !== false,
+    }),
+  });
+
+  const json = (await res.json().catch(() => ({}))) as IdentifySakeResult;
+  if (!res.ok) {
+    throw new Error(json.error || json.details || `identify-sake failed (${res.status})`);
+  }
+  return json;
+}

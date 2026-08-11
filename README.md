@@ -262,7 +262,8 @@ Sake catalog, images, ratings, and user data are loaded from **Supabase** (`sake
 - `EXPO_PUBLIC_SUPABASE_URL` - Your Supabase project URL
 - `EXPO_PUBLIC_SUPABASE_ANON_KEY` or `EXPO_PUBLIC_SUPABASE_KEY` - Supabase anon/public key (starts with `eyJ...`)
 - `EXPO_PUBLIC_OPENAI_API_KEY` - OpenAI API key for client-side label scan (`openai-scan.ts`; legacy name `EXPO_PUBLIC_VIBECODE_OPENAI_API_KEY` still supported)
-- `EXPO_PUBLIC_BACKEND_URL` - SakeScan web/backend base URL for scan upload, catalog contribute, delete-account (defaults to `https://www.sakescan.com`; legacy: `EXPO_PUBLIC_VIBECODE_BACKEND_URL`)
+- `EXPO_PUBLIC_BACKEND_URL` - SakeScan web/backend base URL for scan upload, catalog contribute, delete-account, identify-sake (defaults to `https://www.sakescan.com`; legacy: `EXPO_PUBLIC_VIBECODE_BACKEND_URL`)
+- `EXPO_PUBLIC_WINE_ENGINE_ENABLED` - When `true`/`1`, label scan tries `POST /api/identify-sake` (local hash/embedding + WineEngine fallback) before the edge `scan-label` path
 
 **Keeping mobile in sync with the web backend:** see [docs/BACKEND_SYNC_AUTOMATION.md](docs/BACKEND_SYNC_AUTOMATION.md) and [AGENTS.md](AGENTS.md).
 

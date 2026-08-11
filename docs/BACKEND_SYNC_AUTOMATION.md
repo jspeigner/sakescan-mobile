@@ -47,7 +47,7 @@ Repos
 WHEN TO ACT (open a PR on sakescan-mobile)
 - supabase/migrations or schema / RLS / RPCs that mobile queries
 - Changes to MOBILE_API.md
-- Vercel APIs under api/ used by mobile (upload-scan-image, contribute-scan-image, delete-account, search-sake, etc.)
+- Vercel APIs under api/ used by mobile (upload-scan-image, contribute-scan-image, delete-account, identify-sake, search-sake, etc.)
 - New or changed end-user product features on web (explore, sake detail, brewery detail, auth callback, ratings) that mobile should mirror
 - Auth redirect / deep-link contract changes
 
@@ -72,6 +72,8 @@ HOW TO UPDATE MOBILE
 | `POST /api/upload-scan-image` | `src/lib/backend-api.ts`, `useCreateScan` |
 | `POST /api/contribute-scan-image` | `src/lib/backend-api.ts`, `ScanResultScreen.tsx` |
 | `POST /api/delete-account` | `src/app/profile.tsx` |
+| `POST /api/identify-sake` (local-first + WineEngine fallback) | `src/lib/backend-api.ts`, optional path in `openai-scan.ts` via `EXPO_PUBLIC_WINE_ENGINE_ENABLED` |
+| `sake_image_embeddings` / `wineengine_search_log` / match RPCs | `src/lib/database.types.ts`, `supabase/migrations/*` |
 | `MOBILE_API.md` | Treat as source of truth for mobile DB/API contract |
 | Edge `scan-label` / `delete-user` | `supabase/functions/*`, `openai-scan.ts` |
 
