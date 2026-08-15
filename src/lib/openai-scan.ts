@@ -1,3 +1,10 @@
+import {
+  identifySakeFromImageUrl,
+  isBackendIdentifyEnabled,
+  uploadScanImage,
+  type IdentifySakeMatch,
+  type IdentifySakeResult,
+} from './backend-api';
 import { findCatalogSakeMatch } from './sake-catalog';
 import { supabase } from './supabase';
 
@@ -683,12 +690,136 @@ function mapEdgeCandidate(raw: EdgeScanCandidate): ScanCandidate | null {
   };
 }
 
+function sakeRowToScanInfo(row: Record<string, unknown>): SakeInfo | null {
+  const name = toKnownOptionalString(row.name);
+  const brewery = toKnownOptionalString(row.brewery);
+  if (!name || !brewery) return null;
+
+  const flavorTags = Array.isArray(row.flavor_tags)
+    ? row.flavor_tags.filter((t): t is string => typeof t === 'string')
+    : undefined;
+  const foodPairings = Array.isArray(row.food_pairings)
+    ? row.food_pairings.filter((t): t is string => typeof t === 'string')
+    : undefined;
+  const servingTemps = Array.isArray(row.serving_temps)
+    ? row.serving_temps.filter((t): t is string => typeof t === 'string')
+    : undefined;
+
+  return {
+    name,
+    brewery,
+    nameJapanese: toKnownOptionalString(row.name_japanese),
+    type: toKnownOptionalString(row.type) ?? 'Unknown',
+    subtype: toKnownOptionalString(row.subtype),
+    prefecture: toKnownOptionalString(row.prefecture),
+    region: toKnownOptionalString(row.region),
+    description: toKnownOptionalString(row.description) ?? '',
+    tastingNotes: toKnownOptionalString(row.tasting_notes),
+    foodPairings,
+    riceVariety: toKnownOptionalString(row.rice_variety),
+    polishingRatio: toOptionalNumber(row.polishing_ratio, 0),
+    alcoholPercentage: toOptionalNumber(row.alcohol_percentage, 0),
+    flavorProfile: flavorTags,
+    servingTemperature: servingTemps,
+  };
+}
+
+function mapIdentifyMatchesToCandidates(
+  matches: IdentifySakeMatch[] | undefined,
+): ScanCandidate[] {
+  if (!matches?.length) return [];
+  return matches
+    .map((m) => {
+      const id = toOptionalString(m.sakeId ?? m.sake_id);
+      // Identify API match rows are sparse; only emit candidates with an id.
+      if (!id) return null;
+      return {
+        id,
+        name: toKnownOptionalString(m.labelText ?? m.label_text) ?? 'Possible match',
+        brewery: 'Unknown',
+        score: toOptionalNumber(m.similarity) ?? 0,
+      } satisfies ScanCandidate;
+    })
+    .filter((c): c is ScanCandidate => Boolean(c));
+}
+
+async function tryBackendIdentify(localImageUri: string): Promise<ScanResult | null> {
+  if (!isBackendIdentifyEnabled()) return null;
+
+  try {
+    const httpsUrl = await uploadScanImage({ localUri: localImageUri });
+    if (!httpsUrl) {
+      console.warn('[identify-sake] upload failed; falling back to scan-label');
+      return null;
+    }
+
+    console.log('🔍 Trying local-first identify-sake…');
+    const result: IdentifySakeResult = await identifySakeFromImageUrl({
+      imageUrl: httpsUrl,
+      limit: 5,
+      allowWineEngineFallback: true,
+    });
+
+    if (!result.matched || !result.sakeId || !result.sake) {
+      console.log(
+        '[identify-sake] no confident match:',
+        result.method ?? 'unknown',
+        '— falling back to scan-label',
+      );
+      return null;
+    }
+
+    const sakeInfo = sakeRowToScanInfo(result.sake);
+    if (!sakeInfo) {
+      console.warn('[identify-sake] matched row missing name/brewery; falling back');
+      return null;
+    }
+
+    const quality = getLabelQualityMetrics(sakeInfo);
+    const confidence =
+      typeof result.similarity === 'number'
+        ? Math.round(Math.min(Math.max(result.similarity, 0), 1) * 100)
+        : quality.confidenceScore;
+
+    return {
+      success: true,
+      sake: {
+        ...sakeInfo,
+        confidenceScore: confidence,
+        scanQualityHint: quality.scanQualityHint,
+        qualityReasons: [
+          ...(quality.qualityReasons ?? []),
+          `Matched via ${result.method ?? 'identify-sake'}`,
+        ],
+      },
+      sakeId: result.sakeId,
+      candidates: mapIdentifyMatchesToCandidates(result.matches),
+      ambiguous: false,
+    };
+  } catch (err) {
+    console.warn('[identify-sake] failed; falling back to scan-label:', err);
+    return null;
+  }
+}
+
 /**
  * Label scan via Supabase Edge Function (Vision + catalog match + enrichment).
  * OpenAI key stays server-side. Edge-only — clear errors on failure.
+ *
+ * When `EXPO_PUBLIC_WINE_ENGINE_ENABLED` is set and `localImageUri` is provided,
+ * tries `POST /api/identify-sake` first (hash → embedding → WineEngine), then
+ * falls back to the edge `scan-label` path.
  */
-export async function scanSakeLabel(imageBase64: string): Promise<ScanResult> {
+export async function scanSakeLabel(
+  imageBase64: string,
+  options?: { localImageUri?: string },
+): Promise<ScanResult> {
   try {
+    if (options?.localImageUri) {
+      const identified = await tryBackendIdentify(options.localImageUri);
+      if (identified?.success) return identified;
+    }
+
     console.log('🔍 Analyzing sake label via scan-label edge function...');
 
     const { data, error } = await supabase.functions.invoke('scan-label', {
