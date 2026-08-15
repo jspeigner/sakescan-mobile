@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Text,
   View,
@@ -76,12 +76,23 @@ export default function PaywallScreen() {
   } = useSubscription();
   const [plan, setPlan] = useState<PlanId>('annual');
   const [busy, setBusy] = useState(false);
+  const dismissedRef = useRef(false);
 
   const headerY = useSharedValue(-20);
   const headerOpacity = useSharedValue(0);
   const featuresOpacity = useSharedValue(0);
   const ctaScale = useSharedValue(0.9);
   const ctaOpacity = useSharedValue(0);
+
+  const dismissPaywall = () => {
+    if (dismissedRef.current) return;
+    dismissedRef.current = true;
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)');
+    }
+  };
 
   useEffect(() => {
     headerY.value = withTiming(0, { duration: 400, easing: Easing.out(Easing.cubic) });
@@ -93,7 +104,7 @@ export default function PaywallScreen() {
 
   useEffect(() => {
     if (isPro) {
-      router.back();
+      dismissPaywall();
     }
   }, [isPro]);
 
@@ -134,7 +145,7 @@ export default function PaywallScreen() {
       }
       if (result.success) {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        router.back();
+        dismissPaywall();
       }
     } finally {
       setBusy(false);
@@ -157,7 +168,7 @@ export default function PaywallScreen() {
       if (result.isPro) {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Alert.alert('Welcome back', 'SakeScan Pro has been restored.');
-        router.back();
+        dismissPaywall();
       } else {
         Alert.alert('No purchases found', 'We could not find an active SakeScan Pro subscription.');
       }
@@ -172,7 +183,7 @@ export default function PaywallScreen() {
         <Pressable
           onPress={async () => {
             await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.back();
+            dismissPaywall();
           }}
           style={{
             width: 40,
