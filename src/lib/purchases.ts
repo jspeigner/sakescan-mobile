@@ -3,6 +3,7 @@ import Purchases, {
   LOG_LEVEL,
   PACKAGE_TYPE,
   type CustomerInfo,
+  type CustomerInfoUpdateListener,
   type PurchasesOfferings,
   type PurchasesPackage,
 } from 'react-native-purchases';
@@ -54,10 +55,29 @@ export async function configurePurchases(): Promise<boolean> {
   }
 }
 
+/**
+ * True when the customer should have SakeScan Pro.
+ * Prefer the configured entitlement, but also honor any active entitlement or
+ * Store subscription so a dashboard product↔entitlement mismatch cannot leave
+ * paying users stuck behind the paywall.
+ */
 export function customerHasPro(info: CustomerInfo | null | undefined): boolean {
   if (!info) return false;
-  const ent = info.entitlements.active[PRO_ENTITLEMENT_ID];
-  return !!ent?.isActive;
+
+  const activeEntitlements = info.entitlements?.active ?? {};
+  const direct = activeEntitlements[PRO_ENTITLEMENT_ID];
+  if (direct) return true;
+
+  for (const [key, ent] of Object.entries(activeEntitlements)) {
+    if (!ent) continue;
+    if (key.toLowerCase() === PRO_ENTITLEMENT_ID.toLowerCase()) return true;
+    if (key.toLowerCase().includes('pro')) return true;
+  }
+
+  // Paid in the store but entitlement not mapped in RevenueCat yet.
+  if ((info.activeSubscriptions?.length ?? 0) > 0) return true;
+
+  return false;
 }
 
 export async function getCustomerInfoSafe(): Promise<CustomerInfo | null> {
@@ -68,6 +88,26 @@ export async function getCustomerInfoSafe(): Promise<CustomerInfo | null> {
     console.warn('[Purchases] getCustomerInfo failed:', err);
     return null;
   }
+}
+
+/** Force a network refresh of CustomerInfo (use after purchase/restore). */
+export async function refreshCustomerInfoSafe(): Promise<CustomerInfo | null> {
+  if (!configured) return null;
+  try {
+    await Purchases.invalidateCustomerInfoCache();
+    return await Purchases.getCustomerInfo();
+  } catch (err) {
+    console.warn('[Purchases] refreshCustomerInfo failed:', err);
+    return getCustomerInfoSafe();
+  }
+}
+
+export function addCustomerInfoListener(listener: CustomerInfoUpdateListener): () => void {
+  if (!configured) return () => undefined;
+  Purchases.addCustomerInfoUpdateListener(listener);
+  return () => {
+    Purchases.removeCustomerInfoUpdateListener(listener);
+  };
 }
 
 export async function getOfferingsSafe(): Promise<PurchasesOfferings | null> {
@@ -137,7 +177,10 @@ export async function purchasePackageSafe(
   }
   try {
     const { customerInfo } = await Purchases.purchasePackage(pkg);
-    return { customerInfo, cancelled: false };
+    // Purchase result should already be fresh; still re-read so entitlement
+    // / activeSubscriptions reflect the just-completed Store transaction.
+    const refreshed = await refreshCustomerInfoSafe();
+    return { customerInfo: refreshed ?? customerInfo, cancelled: false };
   } catch (err: unknown) {
     const code =
       err && typeof err === 'object' && 'userCancelled' in err
@@ -158,7 +201,8 @@ export async function restorePurchasesSafe(): Promise<{
   }
   try {
     const customerInfo = await Purchases.restorePurchases();
-    return { customerInfo };
+    const refreshed = await refreshCustomerInfoSafe();
+    return { customerInfo: refreshed ?? customerInfo };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Restore failed';
     return { customerInfo: null, error: message };
