@@ -76,3 +76,6 @@ coverage/
 
 # Expo log (legacy single-file name)
 expo.log
+
+# App Store screenshots (regenerate via eas metadata:pull)
+store/apple/screenshot/

@@ -59,8 +59,10 @@ const FEATURES = [
 
 type PlanId = 'annual' | 'monthly';
 
-const TERMS_URL = 'https://sakescan.com/terms';
-const PRIVACY_URL = 'https://sakescan.com/privacy';
+/** Apple Standard EULA — required for Guideline 3.1.2 subscription compliance. */
+const APPLE_EULA_URL =
+  'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
+const PRIVACY_URL = 'https://www.sakescan.com/privacy';
 
 export default function PaywallScreen() {
   const insets = useSafeAreaInsets();
@@ -430,8 +432,8 @@ export default function PaywallScreen() {
             </Text>
           </Pressable>
           <Text style={{ color: colors.border }}>|</Text>
-          <Pressable onPress={() => Linking.openURL(TERMS_URL)}>
-            <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Terms of Service</Text>
+          <Pressable onPress={() => Linking.openURL(APPLE_EULA_URL)}>
+            <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Terms of Use (EULA)</Text>
           </Pressable>
           <Text style={{ color: colors.border }}>|</Text>
           <Pressable onPress={() => Linking.openURL(PRIVACY_URL)}>
