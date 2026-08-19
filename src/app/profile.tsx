@@ -723,6 +723,7 @@ export default function ProfileScreen() {
             {/* Privacy */}
             <Pressable
               className="flex-row items-center p-4"
+              style={{ borderBottomWidth: 1, borderBottomColor: '#F0EDE5' }}
               onPress={async () => {
                 await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 router.push('/privacy-settings');
@@ -740,6 +741,34 @@ export default function ProfileScreen() {
                 </Text>
                 <Text className="text-[#8B8B8B] text-xs mt-0.5">
                   {t('profile.privacyHint')}
+                </Text>
+              </View>
+              <ChevronRight size={20} color="#8B8B8B" />
+            </Pressable>
+
+            {/* Terms of Use (EULA) — App Store Guideline 3.1.2 */}
+            <Pressable
+              className="flex-row items-center p-4"
+              onPress={async () => {
+                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                const url =
+                  'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
+                const supported = await Linking.canOpenURL(url);
+                if (supported) await Linking.openURL(url);
+              }}
+            >
+              <View
+                className="w-10 h-10 rounded-full items-center justify-center"
+                style={{ backgroundColor: '#FEF3C7' }}
+              >
+                <BookOpen size={20} color="#D97706" />
+              </View>
+              <View className="flex-1 ml-3">
+                <Text className="text-[#1a1a1a] text-base font-medium">
+                  Terms of Use (EULA)
+                </Text>
+                <Text className="text-[#8B8B8B] text-xs mt-0.5">
+                  Apple Standard End User License Agreement
                 </Text>
               </View>
               <ChevronRight size={20} color="#8B8B8B" />

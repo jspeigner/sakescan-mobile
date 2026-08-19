@@ -1,0 +1,168 @@
+{
+  "configVersion": 0,
+  "apple": {
+    "version": "2.1.9",
+    "copyright": "Sakescan 2026",
+    "release": {
+      "automaticRelease": true
+    },
+    "info": {
+      "zh-Hans": {
+        "description": "拿起手机，扫描整份清酒单，立刻知道该点哪一瓶。\n\n走进日料餐厅，翻开厚厚的清酒单，满眼都是看不懂的日文汉字和陌生的酒藏名称——这种感觉你一定不陌生。SakeScan 彻底改变了这个体验。只需将镜头对准整份清酒单，我们的 AI 会在数秒内扫描所有品项，并根据你的口味偏好与预算，直接告诉你：「这瓶，就是你今晚的最佳选择。」\n\nSakeScan 的核心功能：整份酒单扫描，AI 智能推荐\n\n这是全球唯一能够扫描整份清酒单的 App。无论是印刷菜单、手写黑板还是平板电子菜单，SakeScan 都能一次识别所有品项，并依照你设定的口味（辛口/甘口、清爽/浓郁、果香/米香）与价格范围，从中筛选出最适合你的清酒。再也不用靠猜测，也不用尴尬地问服务员。\n\n主要功能：\n\n• 整份酒单扫描（SakeScan 独家功能）\n一键扫描整份清酒单，AI 同时识别所有品项。根据你的口味偏好与预算，立即推荐最适合你的清酒排名。这是 SakeScan 独有的核心功能。\n\n• 即时标签扫描\n对准单瓶清酒的标签，秒速获取完整信息：酒米品种、精米步合、日本酒度、酸度与详细风味描述。\n\n• 超过 50,000 款清酒数据库\n收录日本全国酒藏的详尽资料，从知名品牌獭祭、久保田，到各地隐藏版地酒，应有尽有。\n\n• 完美餐酒搭配\n根据每款清酒的风味特性，AI 为你推荐最搭配的料理。从刺身、寿司到烤肉、火锅，找到最佳组合。\n\n• 个人口味档案\n记录你品尝过的清酒，AI 持续学习你的偏好，推荐越来越精准。扫描越多，越懂你。\n\n• 社区评价\n阅读来自全球 25,000 多位清酒爱好者的真实心得，分享你的品饮体验。\n\n• 酒藏探索\n深入了解日本各地的清酒产区与传统酿造工艺，发现隐藏于各地的珍稀佳酿。\n\n为什么选择 SakeScan：\n\n无论你是清酒新手还是资深爱好者，SakeScan 都能让你在任何场合自信选酒。扫描酒单、设定预算、告诉 App 你喜欢什么口味——剩下的交给我们。\n\n立即下载 SakeScan，从下一顿日料开始，让每一杯清酒都物超所值！\n\n订阅说明\nSakeScan Pro 月度 — 1个月自动续订订阅。\nSakeScan Pro 年度 — 1年自动续订订阅（含7天免费试用）。\n确认购买后将从您的 Apple ID 账户扣款。除非在当前订阅期结束前至少24小时取消，否则将自动续订。购买后可在账户设置中管理或取消。\n\nTerms of Use (EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/\nPrivacy Policy: https://www.sakescan.com/privacy",
+        "keywords": [
+          "清酒",
+          "日本酒",
+          "酒单扫描",
+          "清酒推荐",
+          "餐酒搭配",
+          "清酒数据库",
+          "大吟酿",
+          "纯米酒",
+          "清酒指南",
+          "獭祭",
+          "久保田",
+          "日料",
+          "清酒扫描"
+        ],
+        "releaseNotes": "重磅新功能：一键扫描整份清酒单！SakeScan 全球唯一能扫描整份酒单的清酒 App，依口味与预算即时推荐最适合你的清酒。",
+        "marketingUrl": "https://sakescan.com",
+        "promoText": "重磅新功能：一键扫描整份清酒单！SakeScan 全球唯一能扫描整份酒单的清酒 App，依口味与预算即时推荐最适合你的清酒。",
+        "supportUrl": "https://sakescan.com/contact",
+        "title": "SakeScan：扫描清酒单，找到完美清酒",
+        "subtitle": "AI 依口味与预算，秒推最适合你的清酒",
+        "privacyPolicyUrl": "https://www.sakescan.com/privacy"
+      },
+      "en-US": {
+        "description": "Point your camera at any sake menu. SakeScan reads every bottle and instantly recommends the best one for your taste and budget.\n\nStanding at a Japanese restaurant, staring at a sake menu full of unfamiliar names and kanji characters? SakeScan is the world's only app that scans an entire sake menu at once — and tells you exactly which bottle to order.\n\nJust aim your camera at the menu. Our AI reads every item on the list, then filters and ranks them based on your personal taste preferences (dry or sweet, light or rich, fruity or earthy) and your price range. No guessing. No awkward questions to the server. Just the perfect pour, every time.\n\nTHE CORE FEATURE: Full Menu Scan & AI Recommendation\n\nThis is what makes SakeScan different from every other sake app. While others let you scan one bottle at a time, SakeScan scans the entire menu — printed menus, handwritten chalkboards, and digital tablet menus — and delivers a ranked recommendation list tailored to you in seconds.\n\nALL FEATURES:\n\n• FULL MENU SCAN\nScan an entire sake menu in one shot. SakeScan identifies every item and ranks them by how well they match your taste profile and budget. The world's only sake menu scanner.\n\n• INSTANT LABEL SCAN\nPoint your camera at any single sake label for an immediate deep-dive: rice variety, polishing ratio, SMV, acidity, flavor profile, and tasting notes.\n\n• 50,000+ SAKE DATABASE\nThe most comprehensive sake database on the planet. From iconic labels like Dassai and Kubota to rare regional gems you've never heard of — all covered.\n\n• PERFECT FOOD PAIRINGS\nGet AI-powered pairing suggestions for every sake. From sashimi and sushi to grilled meats and aged cheese — find the combination that elevates your meal.\n\n• PERSONAL TASTE PROFILE\nThe more you scan, the smarter SakeScan gets. Rate what you drink, and our AI continuously refines your recommendations to match your evolving palate.\n\n• COMMUNITY REVIEWS\nRead honest reviews from 25,000+ sake enthusiasts worldwide. Share your own tasting notes and connect with fellow sake lovers.\n\n• BREWERY DISCOVERY\nExplore sake regions across Japan, learn about traditional brewing methods, and uncover hidden gems from small-batch producers.\n\nWHY SAKESCAN:\n\nWhether you're a complete beginner or a seasoned sake lover, SakeScan gives you the confidence to order well at any restaurant, sake bar, or specialty shop. Scan the menu. Set your taste and budget. Let the AI do the rest.\n\nDownload SakeScan today — and never order the wrong sake again.\n\nSUBSCRIPTIONS\nSakeScan Pro Monthly — 1 month auto-renewable subscription.\nSakeScan Pro Annual — 1 year auto-renewable subscription (includes 7-day free trial).\nPayment is charged to your Apple ID account at confirmation of purchase. Subscription renews automatically unless canceled at least 24 hours before the end of the current period. Manage or cancel in your Account Settings after purchase.\n\nTerms of Use (EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/\nPrivacy Policy: https://www.sakescan.com/privacy",
+        "keywords": [
+          "sake",
+          "rice wine",
+          "sake recommend",
+          "sake guide",
+          "sake sommelier",
+          "Dassai",
+          "Kubota",
+          "Hakkaisan",
+          "Japanese"
+        ],
+        "releaseNotes": "NEW: Scan the ENTIRE sake menu in one shot. SakeScan reads every item and instantly picks the best sake for your taste and budget. The world's only sake menu scanner.",
+        "marketingUrl": "https://sakescan.com",
+        "supportUrl": "https://sakescan.com/contact",
+        "title": "SakeScan",
+        "subtitle": "#1 sake discovery app!",
+        "privacyPolicyUrl": "https://www.sakescan.com/privacy",
+        "screenshots": {
+          "APP_IPAD_PRO_3GEN_129": [
+            "store/apple/screenshot/en-US/APP_IPAD_PRO_3GEN_129/screen4_pairing.png",
+            "store/apple/screenshot/en-US/APP_IPAD_PRO_3GEN_129/screen3_taste.png",
+            "store/apple/screenshot/en-US/APP_IPAD_PRO_3GEN_129/screen2_scan.png",
+            "store/apple/screenshot/en-US/APP_IPAD_PRO_3GEN_129/screen1_hero.png",
+            "store/apple/screenshot/en-US/APP_IPAD_PRO_3GEN_129/screen5_community.png"
+          ],
+          "APP_IPHONE_67": [
+            "store/apple/screenshot/en-US/APP_IPHONE_67/screen5_community.png",
+            "store/apple/screenshot/en-US/APP_IPHONE_67/screen3_taste.png",
+            "store/apple/screenshot/en-US/APP_IPHONE_67/screen4_pairing.png",
+            "store/apple/screenshot/en-US/APP_IPHONE_67/screen1_hero.png",
+            "store/apple/screenshot/en-US/APP_IPHONE_67/screen5_community.png"
+          ]
+        }
+      },
+      "ko": {
+        "description": "일본 식당에서 사케 메뉴판을 카메라로 찍기만 하세요. AI가 취향과 예산에 딱 맞는 사케를 바로 골라드립니다.\n\n일본 이자카야나 오마카세 레스토랑에서 두꺼운 사케 메뉴판을 펼쳤을 때, 어디서부터 시작해야 할지 막막했던 경험이 있으신가요? 한자로 가득한 라벨, 낯선 양조장 이름, 다양한 등급과 가격대… SakeScan이 이 모든 고민을 단번에 해결합니다.\n\n메뉴판에 카메라를 갖다 대기만 하면, AI가 메뉴 전체를 한 번에 인식합니다. 그리고 당신이 설정한 맛 취향(드라이/스위트, 깔끔함/풍부함, 과일향/쌀향)과 예산에 맞춰, 그 자리에서 최적의 사케를 추천해드립니다. 이 기능은 전 세계에서 SakeScan만이 제공합니다.\n\nSakeScan의 핵심 기능：메뉴 스캔 & AI 추천\n\n사케 메뉴 전체를 스캔할 수 있는 앱은 SakeScan이 유일합니다. 손으로 쓴 칠판 메뉴, 인쇄된 메뉴판, 태블릿 디지털 메뉴 모두 지원합니다. 스캔 후에는 취향과 예산에 맞게 순위를 매겨 추천 목록을 보여드립니다. 더 이상 \"그냥 유명한 걸로 주세요\"라고 말할 필요가 없습니다.\n\n주요 기능：\n\n• 메뉴판 전체 스캔（SakeScan 독점 기능）\n사케 메뉴판 전체를 한 번에 촬영하세요. AI가 모든 항목을 인식하고, 취향과 예산에 맞는 사케를 순위별로 즉시 추천합니다.\n\n• 라벨 단독 스캔\n병 라벨을 스캔하면 쌀 품종, 정미 비율, 일본주도, 산도, 향미 프로파일을 즉시 확인할 수 있습니다.\n\n• 50,000종 이상의 사케 데이터베이스\n닷사이, 구보타, 핫카이산 등 유명 브랜드부터 아직 잘 알려지지 않은 지역 사케까지, 일본 전국 양조장의 방대한 데이터를 보유하고 있습니다.\n\n• 음식 페어링 추천\n각 사케의 풍미 특성에 맞는 음식을 AI가 추천합니다. 회와 스시는 물론, 삼겹살이나 치즈와의 의외의 조합도 발견할 수 있습니다.\n\n• 나만의 취향 프로파일\n마신 사케를 기록하면 AI가 취향을 학습합니다. 스캔할수록 추천이 더 정확해집니다.\n\n• 커뮤니티 리뷰\n전 세계 25,000명 이상의 사케 애호가들의 솔직한 리뷰를 확인하고, 나의 테이스팅 경험도 공유해보세요.\n\n• 양조장 & 산지 탐방\n일본 각지의 양조장, 전통 양조 기법, 지역별 개성을 깊이 있게 알아볼 수 있습니다.\n\nSakeScan을 선택해야 하는 이유：\n\n사케 입문자든 오랜 애호가든, SakeScan이 있으면 어떤 자리에서도 자신 있게 사케를 고를 수 있습니다. 메뉴판을 스캔하고, 취향과 예산을 설정하면 끝. 나머지는 AI가 알아서 해드립니다.\n\n지금 바로 SakeScan을 다운로드하고, 다음 일본 식당 방문을 특별한 경험으로 만들어보세요！\n\n구독\nSakeScan Pro 월간 — 1개월 자동 갱신 구독.\nSakeScan Pro 연간 — 1년 자동 갱신 구독 (7일 무료 체험 포함).\n구매 확인 시 Apple ID 계정으로 요금이 청구됩니다. 현재 기간 종료 최소 24시간 전에 취소하지 않으면 자동으로 갱신됩니다. 구매 후 계정 설정에서 관리하거나 취소할 수 있습니다.\n\nTerms of Use (EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/\nPrivacy Policy: https://www.sakescan.com/privacy",
+        "keywords": [
+          "사케",
+          "일본술",
+          "사케추천",
+          "메뉴스캔",
+          "사케앱",
+          "음식페어링",
+          "사케데이터베이스",
+          "닷사이",
+          "구보타",
+          "이자카야",
+          "일본요리",
+          "사케가이드",
+          "취향추천"
+        ],
+        "releaseNotes": "드디어 출시! 사케 메뉴판 전체를 한 번에 스캔하세요. 세계 유일의 사케 메뉴 스캐너 — 취향과 예산에 맞는 최고의 사케를 AI가 즉시 추천합니다.",
+        "marketingUrl": "https://sakescan.com",
+        "promoText": "드디어 출시! 사케 메뉴판 전체를 한 번에 스캔하세요. 세계 유일의 사케 메뉴 스캐너 — 취향과 예산에 맞는 최고의 사케를 AI가 즉시 추천합니다.",
+        "supportUrl": "https://sakescan.com/contact",
+        "title": "SakeScan：사케 메뉴 스캔으로 완벽한 한 잔을",
+        "subtitle": "취향과 가격에 맞는 사케를 AI가 즉시 추천",
+        "privacyPolicyUrl": "https://www.sakescan.com/privacy"
+      },
+      "ja": {
+        "description": "居酒屋や料亭のお酒メニューをスキャンするだけ。あなたの好みと予算に合った一本を、AIが即座にご提案します。\n\n居酒屋のメニューを開いて、ずらりと並んだ銘柄の数々に迷ったことはありませんか？「辛口がいいけど、予算は2,000円以内で…」そんな悩みを、SakeScanが一瞬で解決します。\n\nメニューにカメラを向けるだけで、AIがすべての銘柄を一括認識。あなたが設定した味の好み（辛口・甘口・フルーティー・すっきり系など）と予算に基づいて、メニューの中から最適な日本酒を選び出します。これは、SakeScanだけの機能です。\n\nSakeScanの核心機能：メニュースキャンとAI推薦\n\n日本酒のメニューを丸ごとスキャンできるアプリは、世界中でSakeScanだけです。手書きの黒板メニューも、印刷されたお品書きも、タブレット端末のデジタルメニューも、すべて対応。スキャン後は、あなたの好みと予算に合わせてランキング形式でおすすめを表示します。もう「とりあえず有名どころで」と妥協する必要はありません。\n\n主な機能：\n\n• メニュー一括スキャン（SakeScan独自機能）\nお酒メニュー全体をカメラで撮影するだけ。AIがすべての銘柄を認識し、あなたの好みと予算に合った日本酒をランキング形式で即提案します。\n\n• ラベル単体スキャン\n1本の瓶のラベルをスキャンして、酒米・精米歩合・日本酒度・酸度・香味プロファイルを瞬時に確認。\n\n• 5万種以上の日本酒データベース\n全国の蔵元から獺祭・久保田・八海山などの定番銘柄から、まだ知られていない地酒まで網羅。\n\n• 料理とのペアリング提案\nそれぞれの日本酒の味わいに合った料理をAIがご提案。お刺身や焼き鳥はもちろん、意外な組み合わせも発見できます。\n\n• マイ好みプロファイル\n飲んだ銘柄を記録すると、AIがあなたの好みを学習。スキャンするほど、おすすめの精度が上がります。\n\n• コミュニティレビュー\n25,000人以上の日本酒ファンによるリアルなレビューを参考に、自分のテイスティングメモもシェアできます。\n\n• 蔵元・産地探訪\n全国の酒蔵、伝統的な醸造技術、各産地の個性を深く知ることができます。\n\nSakeScanを選ぶ理由：\n\n日本酒初心者の方も、長年の愛好家の方も、SakeScanがあれば居酒屋でも料亭でも自信を持って選べます。メニューをスキャンして、好みと予算を設定するだけ。あとはAIにお任せください。\n\n今すぐSakeScanをダウンロードして、次のお食事から最高の一杯を見つけましょう！\n\nサブスクリプション\nSakeScan Pro 月額 — 1か月の自動更新サブスクリプション。\nSakeScan Pro 年額 — 1年の自動更新サブスクリプション（7日間無料トライアル付き）。\n購入確定時にApple IDアカウントに課金されます。期間終了の24時間前までにキャンセルしない限り自動更新されます。購入後はアカウント設定から管理・キャンセルできます。\n\nTerms of Use (EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/\nPrivacy Policy: https://www.sakescan.com/privacy",
+        "keywords": [
+          "日本酒",
+          "清酒",
+          "酒メニュー",
+          "スキャン",
+          "銘柄",
+          "蔵元",
+          "純米酒",
+          "大吟醸",
+          "ペアリング",
+          "おすすめ",
+          "獺祭",
+          "久保田",
+          "八海山",
+          "地酒",
+          "居酒屋"
+        ],
+        "releaseNotes": "待望の新機能登場！お酒メニューを丸ごと一括スキャン。好みと予算でメニュー全体から最適な一本をAIが即座に提案。世界唯一の日本酒メニュースキャナー。",
+        "marketingUrl": "https://sakescan.com",
+        "promoText": "待望の新機能登場！お酒メニューを丸ごと一括スキャン。好みと予算でメニュー全体から最適な一本をAIが即座に提案。世界唯一の日本酒メニュースキャナー。",
+        "supportUrl": "https://sakescan.com/contact",
+        "title": "SakeScan：酒メニューをスキャンして最高の一杯を",
+        "subtitle": "好みと予算で、あなたにぴったりの日本酒を即提案",
+        "privacyPolicyUrl": "https://www.sakescan.com/privacy"
+      }
+    },
+    "categories": [
+      "FOOD_AND_DRINK",
+      "TRAVEL"
+    ],
+    "advisory": {
+      "ageRatingOverride": "NONE",
+      "alcoholTobaccoOrDrugUseOrReferences": "INFREQUENT_OR_MILD",
+      "contests": "NONE",
+      "gambling": false,
+      "gamblingSimulated": "NONE",
+      "horrorOrFearThemes": "NONE",
+      "kidsAgeBand": null,
+      "koreaAgeRatingOverride": "NONE",
+      "lootBox": false,
+      "matureOrSuggestiveThemes": "NONE",
+      "medicalOrTreatmentInformation": "NONE",
+      "profanityOrCrudeHumor": "NONE",
+      "sexualContentGraphicAndNudity": "NONE",
+      "sexualContentOrNudity": "NONE",
+      "unrestrictedWebAccess": false,
+      "violenceCartoonOrFantasy": "NONE",
+      "violenceRealistic": "NONE",
+      "violenceRealisticProlongedGraphicOrSadistic": "NONE",
+      "advertising": false,
+      "ageAssurance": false,
+      "ageRatingOverrideV2": "NONE",
+      "developerAgeRatingInfoUrl": null,
+      "gunsOrOtherWeapons": "NONE",
+      "healthOrWellnessTopics": false,
+      "messagingAndChat": false,
+      "parentalControls": false,
+      "userGeneratedContent": false
+    },
+    "review": {
+      "firstName": "Jonathan",
+      "lastName": "Speigner",
+      "email": "jonathan@sakescan.com",
+      "phone": "4044227374",
+      "demoUsername": "timapple@sakescan.com",
+      "demoPassword": "REDACTED",
+      "demoRequired": true,
+      "notes": "Only need to sign in to review or save, scanning works as guest. Subscriptions: SakeScan Pro Monthly and Annual. Terms of Use (EULA) and Privacy Policy links are in the App Description and on the in-app paywall (https://www.sakescan.com/terms, https://www.sakescan.com/privacy; Apple Standard EULA: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/)."
+    }
+  }
+}
