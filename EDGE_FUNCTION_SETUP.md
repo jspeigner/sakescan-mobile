@@ -29,16 +29,19 @@ EXPO_PUBLIC_SUPABASE_KEY=eyJhbGc... (your anon key)
 # Link to your project (if not already linked)
 supabase link --project-ref qpsdebikkmcdzddhphlk
 
-# Deploy the scan-label function
+# Deploy scan edge functions (OpenAI key is server-side only)
 supabase functions deploy scan-label
+supabase functions deploy scan-menu
 
-# Set the environment variables (replace with your actual values)
+# Set secrets (replace with your actual values) — never put OpenAI keys in EXPO_PUBLIC_*
 supabase secrets set OPENAI_API_KEY=sk-proj-YOUR_KEY_HERE
 supabase secrets set SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVICE_ROLE_KEY
 supabase secrets set SUPABASE_ANON_KEY=YOUR_ANON_KEY
 ```
 
-Label scanning in the app uses client-side OpenAI Vision (`src/lib/openai-scan.ts`) with `EXPO_PUBLIC_OPENAI_API_KEY` / `EXPO_PUBLIC_VIBECODE_OPENAI_API_KEY`. Menu scan uses the same OpenAI path.
+Label and menu scanning both call Supabase Edge Functions (`scan-label`, `scan-menu`). The OpenAI key lives only in Edge Function secrets (`OPENAI_API_KEY`). Do **not** ship `EXPO_PUBLIC_OPENAI_API_KEY` in the app.
+
+Vision defaults to **`gpt-4o-mini`** (menu escalates to **`gpt-4o`** when mini returns nothing).
 
 ### 4. Verify Deployment
 

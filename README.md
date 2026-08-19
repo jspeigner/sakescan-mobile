@@ -261,23 +261,24 @@ Sake catalog, images, ratings, and user data are loaded from **Supabase** (`sake
 **React Native App (.env):**
 - `EXPO_PUBLIC_SUPABASE_URL` - Your Supabase project URL
 - `EXPO_PUBLIC_SUPABASE_ANON_KEY` or `EXPO_PUBLIC_SUPABASE_KEY` - Supabase anon/public key (starts with `eyJ...`)
-- `EXPO_PUBLIC_OPENAI_API_KEY` - OpenAI API key for client-side label scan (`openai-scan.ts`; legacy name `EXPO_PUBLIC_VIBECODE_OPENAI_API_KEY` still supported)
 - `EXPO_PUBLIC_BACKEND_URL` - Optional retailer search API base URL (legacy: `EXPO_PUBLIC_VIBECODE_BACKEND_URL`)
+
+**Do not put OpenAI keys in `EXPO_PUBLIC_*`.** Label and menu scans use Edge Functions only.
 
 **Supabase Edge Function Secrets:**
 You need to set these in your Supabase dashboard (Settings → Edge Functions → Manage secrets):
 - `SUPABASE_ANON_KEY` - Your Supabase anon/public key (same as above)
 - `SUPABASE_SERVICE_ROLE_KEY` - Service role key (from Supabase dashboard API settings)
-- `OPENAI_API_KEY` - Your OpenAI API key for GPT-4o Vision
+- `OPENAI_API_KEY` - Restricted OpenAI key for Vision (chat completions). Used by `scan-label` + `scan-menu`.
 
 **Important: For local testing:**
 1. Go to Supabase Dashboard → Authentication → Settings
 2. Under "Email Auth", **disable "Enable email confirmations"**
 3. This allows immediate sign-in after sign-up without email verification
 
-## 🚀 Deploying the Edge Function
+## 🚀 Deploying the Edge Functions
 
-The scan-label Edge Function needs to be deployed to Supabase. To deploy:
+Label (`scan-label`) and menu (`scan-menu`) Vision both run on Supabase Edge Functions. Deploy both:
 
 1. **Install Supabase CLI** (if not already installed):
    ```bash
@@ -294,12 +295,13 @@ The scan-label Edge Function needs to be deployed to Supabase. To deploy:
    supabase link --project-ref qpsdebikkmcdzddhphlk
    ```
 
-4. **Deploy the function**:
+4. **Deploy the functions**:
    ```bash
    supabase functions deploy scan-label
+   supabase functions deploy scan-menu
    ```
 
-5. **Set the secrets** (replace with your actual keys):
+5. **Set the secrets** (replace with your actual keys — never use `EXPO_PUBLIC_OPENAI_*`):
    ```bash
    supabase secrets set SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
    supabase secrets set SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
@@ -321,8 +323,9 @@ Alternatively, you can set secrets via the Supabase dashboard:
 
 1. **Edge Function Not Deployed**
    ```bash
-   # Deploy the scan-label function
+   # Deploy scan edge functions
    supabase functions deploy scan-label
+   supabase functions deploy scan-menu
    ```
 
 2. **Missing Environment Variables**
