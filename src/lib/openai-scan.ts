@@ -840,145 +840,49 @@ export async function scanSakeLabel(imageBase64: string): Promise<ScanResult> {
   }
 }
 
+/**
+ * Menu scan via Supabase Edge Function (Vision extract).
+ * OpenAI key stays server-side. Catalog grounding + preference scoring stay on-device.
+ */
 export async function scanSakeMenu(
   imageBase64: string,
   preferences?: MenuPreferences
 ): Promise<MenuScanResult> {
   try {
-    const apiKey =
-      process.env.EXPO_PUBLIC_OPENAI_API_KEY?.trim() ||
-      process.env.EXPO_PUBLIC_VIBECODE_OPENAI_API_KEY?.trim();
+    console.log('📋 Analyzing sake menu via scan-menu edge function...');
 
-    if (!apiKey) {
-      return {
-        success: false,
-        error: 'API key not configured. Add EXPO_PUBLIC_OPENAI_API_KEY to your .env file.',
-      };
-    }
-
-    console.log('📋 Analyzing sake menu with OpenAI Vision...');
-
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: `You are reading a restaurant sake menu photo. Extract EVERY sake listed.
-
-Output must be compact and strictly factual from visible text:
-- Include all listed items
-- Keep each price exactly as shown (including symbols if present)
-- Include size labels if visible (Small, Large, One Size, glass, carafe, bottle, ml)
-- If one sake has multiple listed prices/sizes, output one item per size/price row
-- Do NOT invent missing fields
-- Keep descriptions short (max 10 words) and only when clearly inferable from type
-`,
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: `data:image/jpeg;base64,${imageBase64}`,
-                },
-              },
-            ],
-          },
-        ],
-        response_format: {
-          type: 'json_schema',
-          json_schema: {
-            name: 'menu_sake_items',
-            schema: {
-              type: 'object',
-              additionalProperties: false,
-              properties: {
-                sakes: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    additionalProperties: false,
-                    properties: {
-                      name: { type: 'string' },
-                      nameJapanese: { type: 'string' },
-                      brewery: { type: 'string' },
-                      type: { type: 'string' },
-                      price: { type: 'string' },
-                      size: { type: 'string' },
-                      description: { type: 'string' },
-                      flavorProfile: {
-                        type: 'array',
-                        items: { type: 'string' },
-                      },
-                      servingTemperature: {
-                        type: 'array',
-                        items: { type: 'string' },
-                      },
-                      alcoholPercentage: { type: 'number' },
-                      polishingRatio: { type: 'number' },
-                    },
-                    required: ['name'],
-                  },
-                },
-              },
-              required: ['sakes'],
-            },
-          },
-        },
-        max_tokens: 5000,
-        temperature: 0.2,
-      }),
+    const { data, error } = await supabase.functions.invoke('scan-menu', {
+      body: { image_base64: imageBase64 },
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('OpenAI API error:', response.status, errorText);
-
-      if (response.status === 401) {
-        return { success: false, error: 'Invalid API key.' };
-      } else if (response.status === 429) {
-        return { success: false, error: 'Rate limit exceeded. Please try again in a moment.' };
-      } else if (response.status === 402) {
-        return { success: false, error: 'OpenAI account has insufficient credits.' };
-      }
-
-      return { success: false, error: `OpenAI API error: ${response.status}` };
-    }
-
-    const data = await response.json();
-    const choice = data.choices?.[0];
-    const content = choice?.message?.content;
-
-    if (!content) {
-      return { success: false, error: 'No analysis result from OpenAI' };
-    }
-
-    if (choice?.finish_reason === 'length') {
+    if (error) {
+      console.error('scan-menu edge invoke error:', error);
       return {
         success: false,
         error:
-          'This menu photo has too much text for one pass. Try scanning one menu section at a time.',
+          error.message ||
+          'Menu scan service unavailable. Check your connection and try again.',
       };
     }
 
-    let rawItems: RawMenuSakeItem[] = [];
-    try {
-      const parsed = JSON.parse(content.trim()) as unknown;
-      rawItems = findMenuItemsInUnknown(parsed);
-    } catch {
-      console.error('Failed to parse menu response:', content);
+    const payload = (data ?? {}) as {
+      success?: boolean;
+      message?: string;
+      sakes?: RawMenuSakeItem[];
+    };
+
+    if (!payload.success) {
       return {
         success: false,
-        error: 'Failed to parse menu. Make sure the menu is clearly visible.',
+        error:
+          payload.message ||
+          'No sake items found on this menu. Try better lighting or scan a smaller section of the menu.',
       };
     }
+
+    const rawItems = Array.isArray(payload.sakes)
+      ? payload.sakes
+      : findMenuItemsInUnknown(payload);
 
     const normalized = rawItems
       .map((item) => normalizeMenuSakeItem(item))
@@ -991,6 +895,7 @@ Output must be compact and strictly factual from visible text:
       return {
         success: false,
         error:
+          payload.message ||
           'No sake items found on this menu. Try better lighting or scan a smaller section of the menu.',
       };
     }
@@ -999,11 +904,15 @@ Output must be compact and strictly factual from visible text:
     console.log(`✅ Found ${sakes.length} sake items on menu (${matchedCount} catalog-matched)`);
 
     return { success: true, sakes };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error scanning sake menu:', error);
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'Failed to analyze menu. Check your internet connection.';
     return {
       success: false,
-      error: error.message || 'Failed to analyze menu. Check your internet connection.',
+      error: message,
     };
   }
 }
