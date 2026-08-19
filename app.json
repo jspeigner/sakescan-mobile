@@ -17,7 +17,7 @@
         "NSLocationWhenInUseUsageDescription": "SakeScan uses your location to show nearby stores that carry sake.",
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "17"
+      "buildNumber": "18"
     },
     "android": {
       "edgeToEdgeEnabled": true,
