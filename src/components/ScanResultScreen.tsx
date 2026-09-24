@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Text,
   View,
@@ -99,6 +99,7 @@ export default function ScanResultScreen({
 }: ScanResultScreenProps) {
   const insets = useSafeAreaInsets();
   const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [catalogSakeId, setCatalogSakeId] = useState<string | undefined>(initialCatalogId);
   const [sakeInfo, setSakeInfo] = useState(initialSakeInfo);
   const [candidates] = useState<ScanCandidate[]>(initialCandidates);
@@ -107,13 +108,27 @@ export default function ScanResultScreen({
   const [showBackLabelPrompt, setShowBackLabelPrompt] = useState(false);
   const [pendingCandidateId, setPendingCandidateId] = useState<string | null>(null);
   const [scanId, setScanId] = useState<string | undefined>(initialScanId);
+  const scanIdRef = useRef<string | undefined>(initialScanId);
+  const isSavingRef = useRef(false);
   const addScan = useScanHistoryStore((s) => s.addScan);
+
+  useEffect(() => {
+    scanIdRef.current = scanId;
+  }, [scanId]);
+
+  useEffect(() => {
+    isSavingRef.current = isSaving;
+  }, [isSaving]);
 
   const { data: pendingCandidateSake } = useSake(pendingCandidateId ?? undefined);
 
   const heroOpacity = useSharedValue(0);
   const contentY = useSharedValue(32);
   const contentOpacity = useSharedValue(0);
+
+  const createSake = useCreateSake();
+  const createScan = useCreateScan();
+  const updateScan = useUpdateScan();
 
   useEffect(() => {
     heroOpacity.value = withTiming(1, { duration: 400, easing: Easing.out(Easing.quad) });
@@ -125,16 +140,30 @@ export default function ScanResultScreen({
   useEffect(() => {
     if (!pendingCandidateSake || !pendingCandidateId) return;
     const mapped = catalogSakeToScanInfo(pendingCandidateSake);
+    const selectedId = pendingCandidateId;
     setSakeInfo({
       ...mapped,
       confidenceScore: sakeInfo.confidenceScore,
       scanQualityHint: sakeInfo.scanQualityHint,
       qualityReasons: sakeInfo.qualityReasons,
     });
-    setCatalogSakeId(pendingCandidateId);
+    setCatalogSakeId(selectedId);
     setPendingCandidateId(null);
     setShowWrongPicker(false);
     setConfirmed(false);
+
+    // Persist the chosen candidate onto the scan row so history matches the UI
+    if (scanId) {
+      void updateScan
+        .mutateAsync({
+          scanId,
+          sakeId: selectedId,
+          matched: true,
+        })
+        .catch((err) => {
+          console.warn('Failed to update scan after candidate pick:', err);
+        });
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingCandidateSake, pendingCandidateId]);
 
@@ -144,9 +173,6 @@ export default function ScanResultScreen({
     transform: [{ translateY: contentY.value }],
   }));
 
-  const createSake = useCreateSake();
-  const createScan = useCreateScan();
-  const updateScan = useUpdateScan();
   const qualityTone =
     sakeInfo.scanQualityHint === 'high'
       ? { bg: '#EAF9EE', border: '#B7E6C2', text: '#1F7A3C' }
@@ -159,6 +185,7 @@ export default function ScanResultScreen({
   useEffect(() => {
     const saveScan = async () => {
       try {
+        setSaveError(null);
         await addScan({ sakeInfo: initialSakeInfo, imageUri });
         console.log('✅ Scan saved to local history:', initialSakeInfo.name);
 
@@ -245,6 +272,7 @@ export default function ScanResultScreen({
         }
       } catch (error) {
         console.error('Failed to save scan:', error);
+        setSaveError('Could not save this scan to your account. Check your connection and try again.');
       } finally {
         setIsSaving(false);
       }
@@ -253,9 +281,17 @@ export default function ScanResultScreen({
   }, []); // Empty deps array ensures this runs only once
 
   const openBackLabelCamera = async () => {
+    // Avoid racing the initial save — wait briefly so we can pass scanId for correction updates
+    if (isSavingRef.current) {
+      const started = Date.now();
+      while (isSavingRef.current && Date.now() - started < 5000) {
+        await new Promise((r) => setTimeout(r, 150));
+      }
+    }
     setShowBackLabelPrompt(false);
     setShowWrongPicker(false);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const resolvedScanId = scanIdRef.current;
     router.push({
       pathname: '/camera',
       params: {
@@ -265,7 +301,7 @@ export default function ScanResultScreen({
         rejectedSakeId: catalogSakeId || rejectedSakeId || '',
         rejectedName: sakeInfo.name || rejectedName || '',
         rejectedBrewery: sakeInfo.brewery || rejectedBrewery || '',
-        ...(scanId ? { scanId } : {}),
+        ...(resolvedScanId ? { scanId: resolvedScanId } : {}),
       },
     });
   };
@@ -368,6 +404,18 @@ export default function ScanResultScreen({
         });
       }
     } else {
+      // Keep the scan row in sync when the user confirmed a different candidate
+      if (user && scanId && catalogSakeId) {
+        try {
+          await updateScan.mutateAsync({
+            scanId,
+            sakeId: catalogSakeId,
+            matched: true,
+          });
+        } catch (err) {
+          console.warn('Failed to sync scan on confirm:', err);
+        }
+      }
       await logScanConfirm({
         sakeId: catalogSakeId,
         name: sakeInfo.name,
@@ -384,12 +432,16 @@ export default function ScanResultScreen({
   };
 
   const handleWrongSake = async () => {
+    if (isSaving) {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      return;
+    }
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     await logScanWrong({
       sakeId: catalogSakeId,
       name: sakeInfo.name,
       brewery: sakeInfo.brewery,
-      scanId,
+      scanId: scanIdRef.current,
       frontImageUrl: imageUri,
     });
     if (candidates.length > 1) {
@@ -546,6 +598,17 @@ export default function ScanResultScreen({
             </Pressable>
           ) : null}
 
+          {saveError ? (
+            <View
+              className="mb-6 rounded-2xl px-4 py-3"
+              style={{ backgroundColor: '#FDECEC', borderWidth: 1, borderColor: '#F2B8B5' }}
+            >
+              <Text style={{ color: '#A0352F', fontSize: 13, fontWeight: '600' }}>
+                {saveError}
+              </Text>
+            </View>
+          ) : null}
+
           {(sakeInfo.scanQualityHint || sakeInfo.confidenceScore != null) && (
             <View
               className="mb-6 rounded-2xl px-4 py-3"
@@ -613,12 +676,13 @@ export default function ScanResultScreen({
                 </Pressable>
                 <Pressable
                   onPress={handleWrongSake}
+                  disabled={isSaving}
                   className="flex-1 flex-row items-center justify-center rounded-xl py-3"
-                  style={{ backgroundColor: '#F5F3EE' }}
+                  style={{ backgroundColor: '#F5F3EE', opacity: isSaving ? 0.5 : 1 }}
                 >
                   <X size={16} color="#A0352F" />
                   <Text className="ml-2 text-sm font-semibold" style={{ color: '#A0352F' }}>
-                    Wrong sake
+                    {isSaving ? 'Saving…' : 'Wrong sake'}
                   </Text>
                 </Pressable>
               </View>

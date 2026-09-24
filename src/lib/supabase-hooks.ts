@@ -499,19 +499,31 @@ export function useCreateSake() {
       // Label photo captured during scan
       imageUrl?: string;
     }) => {
-      // Check if sake already exists (fuzzy — catalog names often differ slightly from scan text)
+      // Check if sake already exists (fuzzy — require a name match; never brewery-only)
       const { data: existingRows } = await supabase
         .from('sake')
         .select('id, image_url, name, brewery')
         .or(`name.ilike.%${params.name}%,brewery.ilike.%${params.brewery}%`)
         .limit(8);
 
+      const queryName = params.name.toLowerCase().trim();
+      const queryBrewery = params.brewery.toLowerCase().trim();
+      const nameMatches = (row: { name?: string | null }) => {
+        const n = row.name?.toLowerCase().trim() ?? '';
+        if (!n || !queryName) return false;
+        return n === queryName || n.includes(queryName) || queryName.includes(n);
+      };
+      const breweryMatches = (row: { brewery?: string | null }) => {
+        const b = row.brewery?.toLowerCase().trim() ?? '';
+        if (!b || !queryBrewery) return false;
+        return b === queryBrewery || b.includes(queryBrewery) || queryBrewery.includes(b);
+      };
+
+      // Prefer name+brewery; fall back to name-only. Never pick a brewery-only row.
       const existing =
-        existingRows?.find(
-          (row) =>
-            row.name?.toLowerCase().includes(params.name.toLowerCase()) ||
-            params.name.toLowerCase().includes(row.name?.toLowerCase() ?? ''),
-        ) ?? existingRows?.[0];
+        existingRows?.find((row) => nameMatches(row) && breweryMatches(row)) ??
+        existingRows?.find((row) => nameMatches(row)) ??
+        null;
 
       const structuredFields = {
         flavor_tags: params.flavorProfile?.filter(Boolean) ?? [],

@@ -186,10 +186,12 @@ export default function CameraScreen() {
   const [draftBudget, setDraftBudget] = useState<MenuPreferences['budgetBias']>('balanced');
   const [showInfoModal, setShowInfoModal] = useState(false);
   const cameraRef = useRef<CameraView>(null);
+  const scanningInFlightRef = useRef(false);
   const { isGuest, session, user } = useAuth();
   const { isPro } = useSubscription();
   const { data: menuQuota } = useMenuScanQuota(user?.id, !isGuest && !!user?.id);
   const incrementLabelScan = useGuestUsageStore((s) => s.incrementLabelScan);
+  const canScanLabel = useGuestUsageStore((s) => s.canScanLabel);
   const userId = session?.user?.id;
   const { data: userRatings } = useUserRatings(userId);
   const { data: userFavorites } = useUserFavorites(userId);
@@ -320,7 +322,8 @@ export default function CameraScreen() {
   }
 
   const processImage = async (base64Image: string, imageUri?: string) => {
-    if (isScanning) return;
+    if (scanningInFlightRef.current || isScanning) return;
+    scanningInFlightRef.current = true;
 
     setCapturedImageUri(imageUri ?? null);
     setIsScanning(true);
@@ -330,8 +333,6 @@ export default function CameraScreen() {
       if (isCorrection) {
         if (!frontImageUri) {
           setErrorMessage('Front label photo missing. Go back and try Wrong sake again.');
-          setIsScanning(false);
-          setCapturedImageUri(null);
           return;
         }
 
@@ -344,8 +345,6 @@ export default function CameraScreen() {
         } catch (readErr) {
           console.error('Failed to read front image for correction:', readErr);
           setErrorMessage('Could not read the front label photo. Please rescan the bottle.');
-          setIsScanning(false);
-          setCapturedImageUri(null);
           return;
         }
 
@@ -398,9 +397,13 @@ export default function CameraScreen() {
                 result.error ||
                 'Could not identify this sake from front + back labels.',
               imageUri: frontImageUri || imageUri || '',
+              ...(result.sake
+                ? { sakeData: JSON.stringify(result.sake) }
+                : {}),
               ...(result.candidates?.length
                 ? { candidates: JSON.stringify(result.candidates) }
                 : {}),
+              ...(rejectedName ? { rejectedName } : {}),
             },
           });
         }
@@ -409,16 +412,12 @@ export default function CameraScreen() {
 
       if (scanMode === 'menu') {
         if (isGuest || !session?.access_token) {
-          setIsScanning(false);
-          setCapturedImageUri(null);
           router.push('/account-gate');
           return;
         }
         const used = menuQuota?.used ?? 0;
         const limit = menuQuota?.limit ?? FREE_MENU_SCANS_PER_MONTH;
         if (!isPro && used >= limit) {
-          setIsScanning(false);
-          setCapturedImageUri(null);
           router.push('/paywall');
           return;
         }
@@ -451,6 +450,12 @@ export default function CameraScreen() {
           setErrorMessage(result.error || 'Could not read the menu. Try a clearer photo.');
         }
       } else {
+        // Enforce guest free-scan limit inside camera (not only at entry buttons)
+        if (isGuest && !session?.access_token && !canScanLabel()) {
+          router.push('/account-gate');
+          return;
+        }
+
         console.log('🔍 Starting sake label scan with OpenAI...');
         const result = await scanSakeLabel(base64Image);
 
@@ -489,6 +494,7 @@ export default function CameraScreen() {
             params: {
               errorMessage: result.error || 'Could not identify this sake label.',
               imageUri: imageUri || '',
+              ...(result.sake ? { sakeData: JSON.stringify(result.sake) } : {}),
               ...(result.candidates?.length
                 ? { candidates: JSON.stringify(result.candidates) }
                 : {}),
@@ -501,13 +507,14 @@ export default function CameraScreen() {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setErrorMessage('Something went wrong. Check your internet connection and try again.');
     } finally {
+      scanningInFlightRef.current = false;
       setIsScanning(false);
       setCapturedImageUri(null);
     }
   };
 
   const handleCapture = async () => {
-    if (isScanning) return;
+    if (scanningInFlightRef.current || isScanning) return;
 
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
@@ -526,12 +533,13 @@ export default function CameraScreen() {
       console.error('Capture error:', error);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setErrorMessage('Failed to capture photo. Please try again.');
+      scanningInFlightRef.current = false;
       setIsScanning(false);
     }
   };
 
   const handlePickImage = async () => {
-    if (isScanning) return;
+    if (scanningInFlightRef.current || isScanning) return;
 
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
