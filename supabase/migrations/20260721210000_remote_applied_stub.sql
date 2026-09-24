@@ -1,0 +1,3 @@
+-- Placeholder for remote-applied migration 20260721210000.
+-- This migration was applied on the remote project but its SQL is not in this
+-- repo's history. Schema changes are already present on the remote database.

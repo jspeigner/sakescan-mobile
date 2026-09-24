@@ -64,7 +64,7 @@ export default function BreweriesScreen() {
 
   const flatRows = useMemo((): BreweryDisplay[] => {
     const pages = data?.pages ?? [];
-    return pages.flatMap((page) => page.map(mapRowToDisplay));
+    return pages.flatMap((page) => page.rows.map(mapRowToDisplay));
   }, [data]);
 
   const featuredBrewery = flatRows[0];

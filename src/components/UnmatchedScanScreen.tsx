@@ -271,6 +271,38 @@ export default function UnmatchedScanScreen({
           </Text>
         </Pressable>
 
+        {imageUri ? (
+          <Pressable
+            onPress={async () => {
+              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              router.push({
+                pathname: '/camera',
+                params: {
+                  mode: 'label',
+                  correction: '1',
+                  frontImageUri: imageUri,
+                  rejectedName: prefillName || '',
+                },
+              });
+            }}
+            style={{
+              backgroundColor: colors.surfaceSecondary,
+              paddingVertical: 16,
+              borderRadius: 24,
+              alignItems: 'center',
+              flexDirection: 'row',
+              justifyContent: 'center',
+              gap: 8,
+              marginTop: 12,
+            }}
+          >
+            <Camera size={18} color={colors.text} />
+            <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600' }}>
+              Scan back label
+            </Text>
+          </Pressable>
+        ) : null}
+
         <Pressable
           onPress={async () => {
             await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

@@ -11,6 +11,10 @@ export interface ScanFeedbackEntry {
   sakeId?: string;
   name: string;
   brewery: string;
+  correctedSakeId?: string;
+  scanId?: string;
+  frontImageUrl?: string;
+  backImageUrl?: string;
   at: string;
 }
 
@@ -31,6 +35,10 @@ async function syncRemoteFeedback(params: {
   sakeId?: string;
   name: string;
   brewery: string;
+  correctedSakeId?: string;
+  scanId?: string;
+  frontImageUrl?: string;
+  backImageUrl?: string;
 }): Promise<void> {
   try {
     const {
@@ -44,6 +52,10 @@ async function syncRemoteFeedback(params: {
       sake_id: params.sakeId ?? null,
       name: params.name,
       brewery: params.brewery || null,
+      corrected_sake_id: params.correctedSakeId ?? null,
+      scan_id: params.scanId ?? null,
+      front_image_url: params.frontImageUrl ?? null,
+      back_image_url: params.backImageUrl ?? null,
     } as Record<string, unknown>);
 
     if (error) {
@@ -59,29 +71,88 @@ export async function logScanConfirm(params: {
   sakeId?: string;
   name: string;
   brewery: string;
+  scanId?: string;
+  frontImageUrl?: string;
+  backImageUrl?: string;
 }): Promise<void> {
   await appendFeedback(CONFIRMS_KEY, {
     kind: 'confirm',
     sakeId: params.sakeId,
     name: params.name,
     brewery: params.brewery,
+    scanId: params.scanId,
+    frontImageUrl: params.frontImageUrl,
+    backImageUrl: params.backImageUrl,
     at: new Date().toISOString(),
   });
   await syncRemoteFeedback({ kind: 'confirm', ...params });
 }
 
-/** Log a wrong-sake correction locally + remotely when authenticated. */
+/** Log a wrong-sake report locally + remotely when authenticated. */
 export async function logScanWrong(params: {
   sakeId?: string;
   name: string;
   brewery: string;
+  scanId?: string;
+  frontImageUrl?: string;
+  backImageUrl?: string;
 }): Promise<void> {
   await appendFeedback(WRONGS_KEY, {
     kind: 'wrong',
     sakeId: params.sakeId,
     name: params.name,
     brewery: params.brewery,
+    scanId: params.scanId,
+    frontImageUrl: params.frontImageUrl,
+    backImageUrl: params.backImageUrl,
     at: new Date().toISOString(),
   });
   await syncRemoteFeedback({ kind: 'wrong', ...params });
+}
+
+/**
+ * Log a wrong → corrected trail after the user confirms the back-label re-identify.
+ * Updates remote feedback with corrected_sake_id + label image URLs when signed in.
+ */
+export async function logScanCorrection(params: {
+  rejectedSakeId?: string;
+  rejectedName: string;
+  rejectedBrewery: string;
+  correctedSakeId?: string;
+  correctedName: string;
+  correctedBrewery: string;
+  scanId?: string;
+  frontImageUrl?: string;
+  backImageUrl?: string;
+}): Promise<void> {
+  await appendFeedback(WRONGS_KEY, {
+    kind: 'wrong',
+    sakeId: params.rejectedSakeId,
+    name: params.rejectedName,
+    brewery: params.rejectedBrewery,
+    correctedSakeId: params.correctedSakeId,
+    scanId: params.scanId,
+    frontImageUrl: params.frontImageUrl,
+    backImageUrl: params.backImageUrl,
+    at: new Date().toISOString(),
+  });
+  await syncRemoteFeedback({
+    kind: 'wrong',
+    sakeId: params.rejectedSakeId,
+    name: params.rejectedName,
+    brewery: params.rejectedBrewery,
+    correctedSakeId: params.correctedSakeId,
+    scanId: params.scanId,
+    frontImageUrl: params.frontImageUrl,
+    backImageUrl: params.backImageUrl,
+  });
+  // Also record a confirm on the corrected identity
+  await logScanConfirm({
+    sakeId: params.correctedSakeId,
+    name: params.correctedName,
+    brewery: params.correctedBrewery,
+    scanId: params.scanId,
+    frontImageUrl: params.frontImageUrl,
+    backImageUrl: params.backImageUrl,
+  });
 }

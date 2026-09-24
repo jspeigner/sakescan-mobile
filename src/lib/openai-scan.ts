@@ -41,7 +41,15 @@ export interface ScanResult {
   /** Close alternate matches for "Did you mean?" UI. */
   candidates?: ScanCandidate[];
   ambiguous?: boolean;
+  /** True when Vision used a back-label photo in addition to the front. */
+  usedBackLabel?: boolean;
   error?: string;
+}
+
+export interface RejectedScanBottle {
+  sakeId?: string;
+  name?: string;
+  brewery?: string;
 }
 
 export interface MenuSakeItem {
@@ -603,6 +611,8 @@ interface EdgeScanLabelResponse {
   qualityReasons?: string[];
   ambiguous?: boolean;
   enrichment?: Record<string, unknown> | null;
+  used_back_label?: boolean;
+  model?: string;
 }
 
 function mapEdgeCandidate(raw: EdgeScanCandidate): ScanCandidate | null {
@@ -619,6 +629,132 @@ function mapEdgeCandidate(raw: EdgeScanCandidate): ScanCandidate | null {
     imageUrl: toKnownOptionalString(raw.imageUrl ?? raw.image_url),
     polishingRatio: toOptionalNumber(raw.polishingRatio ?? raw.polishing_ratio, 0),
     score: toOptionalNumber(raw.score) ?? 0,
+  };
+}
+
+function mapEdgeLabelPayload(payload: EdgeScanLabelResponse): ScanResult {
+  if (!payload.success || !payload.extracted) {
+    return {
+      success: false,
+      error:
+        payload.message ||
+        'Could not identify sake information. Please make sure the label is clearly visible.',
+      candidates: (payload.candidates ?? [])
+        .map(mapEdgeCandidate)
+        .filter((c): c is ScanCandidate => Boolean(c)),
+      usedBackLabel: Boolean(payload.used_back_label),
+    };
+  }
+
+  // Normalize snake_case matched row fields into camelCase extract shape when needed
+  const extractedRaw: RawLabelSakeInfo = {
+    ...payload.extracted,
+    nameJapanese:
+      payload.extracted.nameJapanese ??
+      (payload.extracted as Record<string, unknown>).name_japanese,
+    tastingNotes:
+      payload.extracted.tastingNotes ??
+      (payload.extracted as Record<string, unknown>).tasting_notes,
+    foodPairings:
+      payload.extracted.foodPairings ??
+      (payload.extracted as Record<string, unknown>).food_pairings,
+    riceVariety:
+      payload.extracted.riceVariety ??
+      (payload.extracted as Record<string, unknown>).rice_variety,
+    polishingRatio:
+      payload.extracted.polishingRatio ??
+      (payload.extracted as Record<string, unknown>).polishing_ratio,
+    alcoholPercentage:
+      payload.extracted.alcoholPercentage ??
+      (payload.extracted as Record<string, unknown>).alcohol_percentage,
+    flavorProfile:
+      payload.extracted.flavorProfile ??
+      (payload.extracted as Record<string, unknown>).flavor_profile,
+    servingTemperature:
+      payload.extracted.servingTemperature ??
+      (payload.extracted as Record<string, unknown>).serving_temperature,
+  };
+
+  const normalized = normalizeLabelSakeInfo(extractedRaw);
+  if (!normalized) {
+    return {
+      success: false,
+      error: 'Could not identify sake information. Please make sure the label is clearly visible.',
+      usedBackLabel: Boolean(payload.used_back_label),
+    };
+  }
+
+  const qualityFromEdge =
+    payload.confidence != null || payload.scanQualityHint
+      ? {
+          confidenceScore: payload.confidence ?? getLabelQualityMetrics(normalized).confidenceScore,
+          scanQualityHint:
+            payload.scanQualityHint ?? getLabelQualityMetrics(normalized).scanQualityHint,
+          qualityReasons:
+            payload.qualityReasons ?? getLabelQualityMetrics(normalized).qualityReasons,
+        }
+      : getLabelQualityMetrics(normalized);
+
+  let sakeInfo: SakeInfo = {
+    ...normalized,
+    ...qualityFromEdge,
+  };
+
+  // Prefer catalog row details when matched
+  const matched = payload.matched_sake;
+  const sakeId =
+    toOptionalString(payload.sakeId) ??
+    toOptionalString(matched?.id) ??
+    undefined;
+
+  if (matched && typeof matched.name === 'string' && typeof matched.brewery === 'string') {
+    const catalogAsScan: Partial<SakeInfo> = {
+      name: matched.name,
+      brewery: matched.brewery,
+      nameJapanese: toKnownOptionalString(
+        (matched as Record<string, unknown>).nameJapanese ?? matched.name_japanese,
+      ),
+      type: toKnownOptionalString(matched.type) ?? sakeInfo.type,
+      subtype: toKnownOptionalString(matched.subtype),
+      prefecture: toKnownOptionalString(matched.prefecture),
+      region: toKnownOptionalString(matched.region),
+      description: toKnownOptionalString(matched.description) ?? sakeInfo.description,
+      riceVariety: toKnownOptionalString(
+        (matched as Record<string, unknown>).riceVariety ??
+          (matched as Record<string, unknown>).rice_variety,
+      ),
+      polishingRatio: toOptionalNumber(
+        (matched as Record<string, unknown>).polishingRatio ?? matched.polishing_ratio,
+        0,
+      ),
+      alcoholPercentage: toOptionalNumber(
+        (matched as Record<string, unknown>).alcoholPercentage ??
+          (matched as Record<string, unknown>).alcohol_percentage,
+        0,
+      ),
+    };
+    sakeInfo = {
+      ...mergeSakeEnrichment(sakeInfo, catalogAsScan),
+      // Keep Vision/edge identity for display when catalog is thin; prefer catalog name when present
+      name: catalogAsScan.name || sakeInfo.name,
+      brewery: catalogAsScan.brewery || sakeInfo.brewery,
+      ...qualityFromEdge,
+    };
+  }
+
+  const candidates = (payload.candidates ?? [])
+    .map(mapEdgeCandidate)
+    .filter((c): c is ScanCandidate => Boolean(c));
+
+  console.log('✅ Edge scan success:', sakeInfo.name, sakeId ? `(id ${sakeId})` : '(unmatched)');
+
+  return {
+    success: true,
+    sake: sakeInfo,
+    sakeId,
+    candidates: candidates.length > 0 ? candidates : undefined,
+    ambiguous: Boolean(payload.ambiguous),
+    usedBackLabel: Boolean(payload.used_back_label),
   };
 }
 
@@ -644,134 +780,67 @@ export async function scanSakeLabel(imageBase64: string): Promise<ScanResult> {
       };
     }
 
-    const payload = (data ?? {}) as EdgeScanLabelResponse;
-
-    if (!payload.success || !payload.extracted) {
-      return {
-        success: false,
-        error:
-          payload.message ||
-          'Could not identify sake information. Please make sure the label is clearly visible.',
-        candidates: (payload.candidates ?? [])
-          .map(mapEdgeCandidate)
-          .filter((c): c is ScanCandidate => Boolean(c)),
-      };
-    }
-
-    // Normalize snake_case matched row fields into camelCase extract shape when needed
-    const extractedRaw: RawLabelSakeInfo = {
-      ...payload.extracted,
-      nameJapanese:
-        payload.extracted.nameJapanese ??
-        (payload.extracted as Record<string, unknown>).name_japanese,
-      tastingNotes:
-        payload.extracted.tastingNotes ??
-        (payload.extracted as Record<string, unknown>).tasting_notes,
-      foodPairings:
-        payload.extracted.foodPairings ??
-        (payload.extracted as Record<string, unknown>).food_pairings,
-      riceVariety:
-        payload.extracted.riceVariety ??
-        (payload.extracted as Record<string, unknown>).rice_variety,
-      polishingRatio:
-        payload.extracted.polishingRatio ??
-        (payload.extracted as Record<string, unknown>).polishing_ratio,
-      alcoholPercentage:
-        payload.extracted.alcoholPercentage ??
-        (payload.extracted as Record<string, unknown>).alcohol_percentage,
-      flavorProfile:
-        payload.extracted.flavorProfile ??
-        (payload.extracted as Record<string, unknown>).flavor_profile,
-      servingTemperature:
-        payload.extracted.servingTemperature ??
-        (payload.extracted as Record<string, unknown>).serving_temperature,
-    };
-
-    const normalized = normalizeLabelSakeInfo(extractedRaw);
-    if (!normalized) {
-      return {
-        success: false,
-        error: 'Could not identify sake information. Please make sure the label is clearly visible.',
-      };
-    }
-
-    const qualityFromEdge =
-      payload.confidence != null || payload.scanQualityHint
-        ? {
-            confidenceScore: payload.confidence ?? getLabelQualityMetrics(normalized).confidenceScore,
-            scanQualityHint:
-              payload.scanQualityHint ?? getLabelQualityMetrics(normalized).scanQualityHint,
-            qualityReasons:
-              payload.qualityReasons ?? getLabelQualityMetrics(normalized).qualityReasons,
-          }
-        : getLabelQualityMetrics(normalized);
-
-    let sakeInfo: SakeInfo = {
-      ...normalized,
-      ...qualityFromEdge,
-    };
-
-    // Prefer catalog row details when matched
-    const matched = payload.matched_sake;
-    const sakeId =
-      toOptionalString(payload.sakeId) ??
-      toOptionalString(matched?.id) ??
-      undefined;
-
-    if (matched && typeof matched.name === 'string' && typeof matched.brewery === 'string') {
-      const catalogAsScan: Partial<SakeInfo> = {
-        name: matched.name,
-        brewery: matched.brewery,
-        nameJapanese: toKnownOptionalString(
-          (matched as Record<string, unknown>).nameJapanese ?? matched.name_japanese,
-        ),
-        type: toKnownOptionalString(matched.type) ?? sakeInfo.type,
-        subtype: toKnownOptionalString(matched.subtype),
-        prefecture: toKnownOptionalString(matched.prefecture),
-        region: toKnownOptionalString(matched.region),
-        description: toKnownOptionalString(matched.description) ?? sakeInfo.description,
-        riceVariety: toKnownOptionalString(
-          (matched as Record<string, unknown>).riceVariety ??
-            (matched as Record<string, unknown>).rice_variety,
-        ),
-        polishingRatio: toOptionalNumber(
-          (matched as Record<string, unknown>).polishingRatio ?? matched.polishing_ratio,
-          0,
-        ),
-        alcoholPercentage: toOptionalNumber(
-          (matched as Record<string, unknown>).alcoholPercentage ??
-            (matched as Record<string, unknown>).alcohol_percentage,
-          0,
-        ),
-      };
-      sakeInfo = {
-        ...mergeSakeEnrichment(sakeInfo, catalogAsScan),
-        // Keep Vision/edge identity for display when catalog is thin; prefer catalog name when present
-        name: catalogAsScan.name || sakeInfo.name,
-        brewery: catalogAsScan.brewery || sakeInfo.brewery,
-        ...qualityFromEdge,
-      };
-    }
-
-    const candidates = (payload.candidates ?? [])
-      .map(mapEdgeCandidate)
-      .filter((c): c is ScanCandidate => Boolean(c));
-
-    console.log('✅ Edge scan success:', sakeInfo.name, sakeId ? `(id ${sakeId})` : '(unmatched)');
-
-    return {
-      success: true,
-      sake: sakeInfo,
-      sakeId,
-      candidates: candidates.length > 0 ? candidates : undefined,
-      ambiguous: Boolean(payload.ambiguous),
-    };
+    return mapEdgeLabelPayload((data ?? {}) as EdgeScanLabelResponse);
   } catch (error: unknown) {
     console.error('Error scanning sake label:', error);
     const message =
       error instanceof Error
         ? error.message
         : 'Failed to analyze label. Please check your internet connection.';
+    return {
+      success: false,
+      error: message,
+    };
+  }
+}
+
+/**
+ * Front + back label correction scan (wrong-sake path).
+ * Sends both images plus rejected-bottle negative context to scan-label.
+ */
+export async function scanSakeLabelCorrection(params: {
+  frontBase64: string;
+  backBase64: string;
+  rejected?: RejectedScanBottle;
+}): Promise<ScanResult> {
+  try {
+    console.log('🔍 Correction scan (front+back) via scan-label edge function...');
+
+    const rejected =
+      params.rejected &&
+      (params.rejected.sakeId || params.rejected.name || params.rejected.brewery)
+        ? {
+            sakeId: params.rejected.sakeId,
+            name: params.rejected.name,
+            brewery: params.rejected.brewery,
+          }
+        : undefined;
+
+    const { data, error } = await supabase.functions.invoke('scan-label', {
+      body: {
+        image_base64: params.frontBase64,
+        back_image_base64: params.backBase64,
+        ...(rejected ? { rejected } : {}),
+      },
+    });
+
+    if (error) {
+      console.error('scan-label correction invoke error:', error);
+      return {
+        success: false,
+        error:
+          error.message ||
+          'Label scan service unavailable. Check your connection and try again.',
+      };
+    }
+
+    return mapEdgeLabelPayload((data ?? {}) as EdgeScanLabelResponse);
+  } catch (error: unknown) {
+    console.error('Error in correction label scan:', error);
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'Failed to analyze labels. Please check your internet connection.';
     return {
       success: false,
       error: message,
