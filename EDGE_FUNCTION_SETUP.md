@@ -41,7 +41,14 @@ supabase secrets set SUPABASE_ANON_KEY=YOUR_ANON_KEY
 
 Label and menu scanning both call Supabase Edge Functions (`scan-label`, `scan-menu`). The OpenAI key lives only in Edge Function secrets (`OPENAI_API_KEY`). Do **not** ship `EXPO_PUBLIC_OPENAI_API_KEY` in the app.
 
-Vision defaults to **`gpt-4o-mini`** (menu escalates to **`gpt-4o`** when mini returns nothing).
+Vision defaults to **`gpt-4o-mini`** (label and menu escalate to **`gpt-4o`** when mini returns nothing usable; label correction also escalates on weak front+back extracts).
+
+`scan-label` also accepts optional `back_image_base64` and `rejected` for the wrong-sake → back-label correction path. Redeploy after schema changes:
+
+```bash
+supabase db push
+supabase functions deploy scan-label
+```
 
 ### 4. Verify Deployment
 

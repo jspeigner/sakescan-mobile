@@ -385,8 +385,12 @@ export function useScanLabel() {
 }
 
 /** Upload a local file URI to the sake-images bucket. Returns the storage path on success. */
-async function uploadLabelImage(localUri: string, sakeId: string): Promise<string | null> {
-  const path = `labels/${sakeId}-${Date.now()}.jpg`;
+async function uploadLabelImage(
+  localUri: string,
+  sakeId: string,
+  side: 'front' | 'back' | 'label' = 'label',
+): Promise<string | null> {
+  const path = `labels/${sakeId}-${side}-${Date.now()}.jpg`;
   const base64 = await FileSystem.readAsStringAsync(localUri, {
     encoding: FileSystem.EncodingType.Base64,
   });
@@ -399,6 +403,76 @@ async function uploadLabelImage(localUri: string, sakeId: string): Promise<strin
     return null;
   }
   return path;
+}
+
+/** Persist confirmed front/back label photos onto a catalog sake for stronger future matches. */
+export async function persistSakeLabelImages(params: {
+  sakeId: string;
+  userId: string;
+  frontImageUri?: string;
+  backImageUri?: string;
+  scanId?: string;
+}): Promise<{ frontPath?: string; backPath?: string }> {
+  const result: { frontPath?: string; backPath?: string } = {};
+  const rows: Array<{
+    sake_id: string;
+    side: 'front' | 'back';
+    storage_path: string;
+    source_scan_id: string | null;
+    created_by: string;
+  }> = [];
+
+  if (params.frontImageUri) {
+    const path = await uploadLabelImage(params.frontImageUri, params.sakeId, 'front');
+    if (path) {
+      result.frontPath = path;
+      rows.push({
+        sake_id: params.sakeId,
+        side: 'front',
+        storage_path: path,
+        source_scan_id: params.scanId ?? null,
+        created_by: params.userId,
+      });
+    }
+  }
+
+  if (params.backImageUri) {
+    const path = await uploadLabelImage(params.backImageUri, params.sakeId, 'back');
+    if (path) {
+      result.backPath = path;
+      rows.push({
+        sake_id: params.sakeId,
+        side: 'back',
+        storage_path: path,
+        source_scan_id: params.scanId ?? null,
+        created_by: params.userId,
+      });
+    }
+  }
+
+  if (rows.length === 0) return result;
+
+  const { error } = await supabase.from('sake_label_images').insert(rows as Record<string, unknown>[]);
+  if (error) {
+    console.warn('Failed to insert sake_label_images:', error.message);
+  }
+
+  // Keep sake.image_url populated from front when missing
+  if (result.frontPath) {
+    const { data: existing } = await supabase
+      .from('sake')
+      .select('image_url')
+      .eq('id', params.sakeId)
+      .maybeSingle();
+    if (!existing?.image_url) {
+      await supabase
+        .from('sake')
+        .update({ image_url: result.frontPath } as Record<string, unknown>)
+        .eq('id', params.sakeId);
+    }
+  }
+
+  return result;
 }
 
 export function useCreateSake() {
@@ -526,6 +600,7 @@ export function useCreateScan() {
       userId: string;
       sakeId: string;
       imageUrl?: string;
+      backImageUrl?: string;
       ocrRawText?: string;
     }) => {
       const { data, error } = await supabase
@@ -534,6 +609,7 @@ export function useCreateScan() {
           user_id: params.userId,
           sake_id: params.sakeId,
           scanned_image_url: params.imageUrl ?? null,
+          back_image_url: params.backImageUrl ?? null,
           ocr_raw_text: params.ocrRawText ?? null,
           matched: true,
         } as Record<string, unknown>)
@@ -553,6 +629,42 @@ export function useCreateScan() {
           scanId: (data as { id?: string })?.id,
         }),
       );
+    },
+  });
+}
+
+/** Update an existing scan after a back-label correction (new sake_id / back image). */
+export function useUpdateScan() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (params: {
+      scanId: string;
+      sakeId?: string;
+      imageUrl?: string;
+      backImageUrl?: string;
+      ocrRawText?: string;
+      matched?: boolean;
+    }) => {
+      const patch: Record<string, unknown> = {};
+      if (params.sakeId !== undefined) patch.sake_id = params.sakeId;
+      if (params.imageUrl !== undefined) patch.scanned_image_url = params.imageUrl;
+      if (params.backImageUrl !== undefined) patch.back_image_url = params.backImageUrl;
+      if (params.ocrRawText !== undefined) patch.ocr_raw_text = params.ocrRawText;
+      if (params.matched !== undefined) patch.matched = params.matched;
+
+      const { data, error } = await supabase
+        .from('scans')
+        .update(patch)
+        .eq('id', params.scanId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scans'] });
     },
   });
 }

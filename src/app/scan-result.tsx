@@ -9,9 +9,15 @@ export default function ScanResult() {
   const params = useLocalSearchParams<{
     sakeData?: string;
     imageUri?: string;
+    backImageUri?: string;
     sakeId?: string;
     candidates?: string;
     ambiguous?: string;
+    correctedFrom?: string;
+    rejectedSakeId?: string;
+    rejectedName?: string;
+    rejectedBrewery?: string;
+    scanId?: string;
   }>();
 
   const catalogSakeId = params.sakeId?.trim() || undefined;
@@ -32,6 +38,7 @@ export default function ScanResult() {
   }
 
   const ambiguous = params.ambiguous === '1' || params.ambiguous === 'true';
+  const isCorrection = params.correctedFrom === '1' || params.correctedFrom === 'true';
 
   if (catalogSakeId && isCatalogLoading) {
     return (
@@ -66,9 +73,15 @@ export default function ScanResult() {
     <ScanResultScreen
       sakeInfo={sakeInfo}
       imageUri={params.imageUri}
+      backImageUri={params.backImageUri}
       catalogSakeId={catalogSake?.id ?? catalogSakeId}
       candidates={candidates}
       ambiguous={ambiguous}
+      scanId={params.scanId?.trim() || undefined}
+      isCorrection={isCorrection}
+      rejectedSakeId={params.rejectedSakeId?.trim() || undefined}
+      rejectedName={params.rejectedName}
+      rejectedBrewery={params.rejectedBrewery}
     />
   );
 }
