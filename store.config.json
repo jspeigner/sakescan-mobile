@@ -1,7 +1,7 @@
 {
   "configVersion": 0,
   "apple": {
-    "version": "2.1.11",
+    "version": "2.1.13",
     "copyright": "Sakescan 2026",
     "release": {
       "automaticRelease": true
