@@ -134,26 +134,56 @@ export function useSakeByRegion(region: string | null) {
 /** Page size for Breweries tab — must match sensible default in `list_breweries_catalog`. */
 export const BREWERIES_CATALOG_PAGE_SIZE = 30;
 
+/** Placeholder brewery labels that should not appear in the Breweries catalog. */
+const UNKNOWN_BREWERY_LABELS = new Set([
+  'unknown',
+  'unknown brewery',
+  'n/a',
+  'na',
+  'none',
+  'not specified',
+  'unspecified',
+  'not listed',
+  'not available',
+]);
+
+export function isKnownBreweryName(name: string | null | undefined): boolean {
+  const trimmed = name?.trim() ?? '';
+  if (!trimmed) return false;
+  return !UNKNOWN_BREWERY_LABELS.has(trimmed.toLowerCase());
+}
+
+type BreweriesCatalogPage = {
+  rows: BreweryCatalogRow[];
+  /** Raw RPC row count before client Unknown-filter (drives pagination). */
+  rawCount: number;
+};
+
 /**
  * Paginated breweries aggregated from the full `sake` table (Supabase RPC).
- * Ordered by sake count descending; uses keyset-stable sort for consistent paging.
+ * Ordered by sake count descending. Omits Unknown/empty brewery placeholders
+ * (client filter until/alongside RPC migration).
  */
 export function useBreweriesCatalog() {
   return useInfiniteQuery({
-    queryKey: ['breweries', 'catalog', BREWERIES_CATALOG_PAGE_SIZE],
+    queryKey: ['breweries', 'catalog', BREWERIES_CATALOG_PAGE_SIZE, 'exclude-unknown'],
     initialPageParam: 0,
-    queryFn: async ({ pageParam }) => {
+    queryFn: async ({ pageParam }): Promise<BreweriesCatalogPage> => {
       const offset = pageParam as number;
       const { data, error } = await supabase.rpc('list_breweries_catalog', {
         p_limit: BREWERIES_CATALOG_PAGE_SIZE,
         p_offset: offset,
       });
       if (error) throw error;
-      return (data ?? []) as BreweryCatalogRow[];
+      const raw = (data ?? []) as BreweryCatalogRow[];
+      return {
+        rows: raw.filter((row) => isKnownBreweryName(row.name)),
+        rawCount: raw.length,
+      };
     },
     getNextPageParam: (lastPage, allPages) => {
-      if (lastPage.length < BREWERIES_CATALOG_PAGE_SIZE) return undefined;
-      return allPages.reduce((sum, page) => sum + page.length, 0);
+      if (lastPage.rawCount < BREWERIES_CATALOG_PAGE_SIZE) return undefined;
+      return allPages.reduce((sum, page) => sum + page.rawCount, 0);
     },
   });
 }
