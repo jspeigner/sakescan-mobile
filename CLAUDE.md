@@ -146,7 +146,7 @@ You have access to a few skills in the `.claude/skills` folder. Use them to your
 This is SakeScan - a "Vivino for Sake" mobile app.
 
 Key features:
-- Camera scanning with expo-camera + OpenAI Vision (client `openai-scan` / Edge Function `scan-label`)
+- Camera scanning with expo-camera + OpenAI Vision via Edge Functions (`scan-label`, `scan-menu`; client invokes through `openai-scan.ts`)
 - Browse/search sake from Supabase in Explore and related screens
 - Detailed sake pages with ratings, reviews, and DB-backed descriptions
 - Profile with Supabase Auth and scan history

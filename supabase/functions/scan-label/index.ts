@@ -391,7 +391,7 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Step 1: Vision — factual label extraction only
+    // Step 1: Vision — factual label extraction (gpt-4o-mini for cost; enrich still uses mini)
     const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -399,7 +399,7 @@ Deno.serve(async (req) => {
         Authorization: `Bearer ${openaiApiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: 'gpt-4o-mini',
         messages: [
           {
             role: 'user',
