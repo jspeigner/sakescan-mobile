@@ -127,6 +127,7 @@ export interface Database {
           user_id: string;
           sake_id: string | null;
           scanned_image_url: string | null;
+          back_image_url: string | null;
           ocr_raw_text: string | null;
           matched: boolean;
           created_at: string;
@@ -136,6 +137,7 @@ export interface Database {
           user_id: string;
           sake_id?: string | null;
           scanned_image_url?: string | null;
+          back_image_url?: string | null;
           ocr_raw_text?: string | null;
           matched?: boolean;
           created_at?: string;
@@ -145,6 +147,7 @@ export interface Database {
           user_id?: string;
           sake_id?: string | null;
           scanned_image_url?: string | null;
+          back_image_url?: string | null;
           ocr_raw_text?: string | null;
           matched?: boolean;
           created_at?: string;
@@ -236,6 +239,10 @@ export interface Database {
           sake_id: string | null;
           name: string;
           brewery: string | null;
+          corrected_sake_id: string | null;
+          scan_id: string | null;
+          front_image_url: string | null;
+          back_image_url: string | null;
           created_at: string;
         };
         Insert: {
@@ -245,6 +252,10 @@ export interface Database {
           sake_id?: string | null;
           name: string;
           brewery?: string | null;
+          corrected_sake_id?: string | null;
+          scan_id?: string | null;
+          front_image_url?: string | null;
+          back_image_url?: string | null;
           created_at?: string;
         };
         Update: {
@@ -254,6 +265,39 @@ export interface Database {
           sake_id?: string | null;
           name?: string;
           brewery?: string | null;
+          corrected_sake_id?: string | null;
+          scan_id?: string | null;
+          front_image_url?: string | null;
+          back_image_url?: string | null;
+          created_at?: string;
+        };
+      };
+      sake_label_images: {
+        Row: {
+          id: string;
+          sake_id: string;
+          side: 'front' | 'back';
+          storage_path: string;
+          source_scan_id: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          sake_id: string;
+          side: 'front' | 'back';
+          storage_path: string;
+          source_scan_id?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          sake_id?: string;
+          side?: 'front' | 'back';
+          storage_path?: string;
+          source_scan_id?: string | null;
+          created_by?: string | null;
           created_at?: string;
         };
       };
@@ -550,6 +594,7 @@ export type Favorite = Database['public']['Tables']['favorites']['Row'];
 export type MenuScan = Database['public']['Tables']['menu_scans']['Row'];
 export type MenuScanItem = Database['public']['Tables']['menu_scan_items']['Row'];
 export type ScanFeedback = Database['public']['Tables']['scan_feedback']['Row'];
+export type SakeLabelImage = Database['public']['Tables']['sake_label_images']['Row'];
 export type MenuPriceSighting =
   Database['public']['Functions']['get_menu_prices_for_sake']['Returns'][number];
 

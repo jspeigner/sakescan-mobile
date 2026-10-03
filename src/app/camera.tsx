@@ -13,12 +13,17 @@ import Animated, {
   cancelAnimation,
 } from 'react-native-reanimated';
 import { ChevronLeft, Info, Image as ImageIcon, Zap, BookOpen, ScanLine, SlidersHorizontal } from 'lucide-react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
-import { scanSakeLabel, scanSakeMenu, type MenuPreferences } from '@/lib/openai-scan';
+import {
+  scanSakeLabel,
+  scanSakeLabelCorrection,
+  scanSakeMenu,
+  type MenuPreferences,
+} from '@/lib/openai-scan';
 import { useAuth } from '@/lib/auth-context';
 import { useGuestUsageStore } from '@/lib/guest-usage-store';
 import { useUserFavorites, useUserRatings, useMenuScanQuota } from '@/lib/supabase-hooks';
@@ -27,6 +32,13 @@ import { FREE_MENU_SCANS_PER_MONTH } from '@/lib/purchases';
 import { useI18n } from '@/lib/i18n-context';
 
 type ScanMode = 'label' | 'menu';
+
+const CORRECTION_STAGES = [
+  { threshold: 0, label: 'Capturing back label...' },
+  { threshold: 20, label: 'Combining front + back...' },
+  { threshold: 50, label: 'Re-identifying sake...' },
+  { threshold: 80, label: 'Finishing up...' },
+];
 
 const MENU_FLAVOR_OPTIONS = ['Crisp', 'Dry', 'Umami', 'Fruity', 'Floral', 'Rich', 'Sweet', 'Smooth'] as const;
 const BUDGET_OPTIONS: { id: MenuPreferences['budgetBias']; label: string }[] = [
@@ -53,8 +65,8 @@ const MENU_STAGES = [
   { threshold: 85, label: 'Finishing up...' },
 ];
 
-function getScanStage(progress: number, mode: ScanMode): string {
-  const stages = mode === 'menu' ? MENU_STAGES : LABEL_STAGES;
+function getScanStage(progress: number, mode: ScanMode, isCorrection: boolean): string {
+  const stages = isCorrection ? CORRECTION_STAGES : mode === 'menu' ? MENU_STAGES : LABEL_STAGES;
   for (let i = stages.length - 1; i >= 0; i--) {
     if (progress >= stages[i].threshold) return stages[i].label;
   }
@@ -140,6 +152,24 @@ function inferMenuPreferences(
 export default function CameraScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useI18n();
+  const routeParams = useLocalSearchParams<{
+    mode?: string;
+    correction?: string;
+    frontImageUri?: string;
+    rejectedSakeId?: string;
+    rejectedName?: string;
+    rejectedBrewery?: string;
+    scanId?: string;
+  }>();
+  const isCorrection =
+    routeParams.correction === '1' ||
+    routeParams.correction === 'true';
+  const frontImageUri = routeParams.frontImageUri?.trim() || '';
+  const rejectedSakeId = routeParams.rejectedSakeId?.trim() || undefined;
+  const rejectedName = routeParams.rejectedName?.trim() || undefined;
+  const rejectedBrewery = routeParams.rejectedBrewery?.trim() || undefined;
+  const correctionScanId = routeParams.scanId?.trim() || undefined;
+
   const [facing] = useState<CameraType>('back');
   const [permission, requestPermission] = useCameraPermissions();
   const [isScanning, setIsScanning] = useState(false);
@@ -147,17 +177,21 @@ export default function CameraScreen() {
   const [flashOn, setFlashOn] = useState(false);
   const [capturedImageUri, setCapturedImageUri] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [scanMode, setScanMode] = useState<ScanMode>('label');
+  const [scanMode, setScanMode] = useState<ScanMode>(
+    isCorrection ? 'label' : routeParams.mode === 'menu' ? 'menu' : 'label',
+  );
   const [prefsSheetVisible, setPrefsSheetVisible] = useState(false);
   const [prefsOverride, setPrefsOverride] = useState<MenuPreferences | null>(null);
   const [draftFlavors, setDraftFlavors] = useState<string[]>([]);
   const [draftBudget, setDraftBudget] = useState<MenuPreferences['budgetBias']>('balanced');
   const [showInfoModal, setShowInfoModal] = useState(false);
   const cameraRef = useRef<CameraView>(null);
+  const scanningInFlightRef = useRef(false);
   const { isGuest, session, user } = useAuth();
   const { isPro } = useSubscription();
   const { data: menuQuota } = useMenuScanQuota(user?.id, !isGuest && !!user?.id);
   const incrementLabelScan = useGuestUsageStore((s) => s.incrementLabelScan);
+  const canScanLabel = useGuestUsageStore((s) => s.canScanLabel);
   const userId = session?.user?.id;
   const { data: userRatings } = useUserRatings(userId);
   const { data: userFavorites } = useUserFavorites(userId);
@@ -166,6 +200,10 @@ export default function CameraScreen() {
     [userFavorites, userRatings]
   );
   const menuPreferences = prefsOverride ?? inferredMenuPreferences;
+
+  useEffect(() => {
+    if (isCorrection) setScanMode('label');
+  }, [isCorrection]);
 
   const openMenuPrefsSheet = (seed?: MenuPreferences) => {
     setDraftFlavors(seed?.preferredFlavors?.length ? [...seed.preferredFlavors] : ['Crisp', 'Dry']);
@@ -284,25 +322,102 @@ export default function CameraScreen() {
   }
 
   const processImage = async (base64Image: string, imageUri?: string) => {
-    if (isScanning) return;
+    if (scanningInFlightRef.current || isScanning) return;
+    scanningInFlightRef.current = true;
 
     setCapturedImageUri(imageUri ?? null);
     setIsScanning(true);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
+      if (isCorrection) {
+        if (!frontImageUri) {
+          setErrorMessage('Front label photo missing. Go back and try Wrong sake again.');
+          return;
+        }
+
+        console.log('🔁 Starting front+back correction scan...');
+        let frontBase64: string;
+        try {
+          frontBase64 = await FileSystem.readAsStringAsync(frontImageUri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+        } catch (readErr) {
+          console.error('Failed to read front image for correction:', readErr);
+          setErrorMessage('Could not read the front label photo. Please rescan the bottle.');
+          return;
+        }
+
+        const result = await scanSakeLabelCorrection({
+          frontBase64,
+          backBase64: base64Image,
+          rejected: {
+            sakeId: rejectedSakeId,
+            name: rejectedName,
+            brewery: rejectedBrewery,
+          },
+        });
+
+        if (result.success && result.sake) {
+          console.log('✅ Correction scan success:', result.sake.name);
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+          setScanProgress(100);
+          successFlash.value = withSequence(
+            withTiming(0.6, { duration: 80 }),
+            withTiming(0, { duration: 300 }),
+          );
+          await new Promise((r) => setTimeout(r, 350));
+
+          router.replace({
+            pathname: '/scan-result',
+            params: {
+              sakeData: JSON.stringify(result.sake),
+              imageUri: frontImageUri,
+              backImageUri: imageUri || '',
+              correctedFrom: '1',
+              ...(result.sakeId ? { sakeId: result.sakeId } : {}),
+              ...(result.candidates?.length
+                ? { candidates: JSON.stringify(result.candidates) }
+                : {}),
+              ...(result.ambiguous ? { ambiguous: '1' } : {}),
+              ...(rejectedSakeId ? { rejectedSakeId } : {}),
+              ...(rejectedName ? { rejectedName } : {}),
+              ...(rejectedBrewery ? { rejectedBrewery } : {}),
+              ...(correctionScanId ? { scanId: correctionScanId } : {}),
+            },
+          });
+        } else {
+          console.error('❌ Correction scan failed:', result.error);
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          router.replace({
+            pathname: '/unmatched-scan',
+            params: {
+              errorMessage:
+                result.error ||
+                'Could not identify this sake from front + back labels.',
+              imageUri: frontImageUri || imageUri || '',
+              ...(result.sake
+                ? { sakeData: JSON.stringify(result.sake) }
+                : {}),
+              ...(result.candidates?.length
+                ? { candidates: JSON.stringify(result.candidates) }
+                : {}),
+              ...(rejectedName ? { rejectedName } : {}),
+            },
+          });
+        }
+        return;
+      }
+
       if (scanMode === 'menu') {
         if (isGuest || !session?.access_token) {
-          setIsScanning(false);
-          setCapturedImageUri(null);
           router.push('/account-gate');
           return;
         }
         const used = menuQuota?.used ?? 0;
         const limit = menuQuota?.limit ?? FREE_MENU_SCANS_PER_MONTH;
         if (!isPro && used >= limit) {
-          setIsScanning(false);
-          setCapturedImageUri(null);
           router.push('/paywall');
           return;
         }
@@ -335,6 +450,12 @@ export default function CameraScreen() {
           setErrorMessage(result.error || 'Could not read the menu. Try a clearer photo.');
         }
       } else {
+        // Enforce guest free-scan limit inside camera (not only at entry buttons)
+        if (isGuest && !session?.access_token && !canScanLabel()) {
+          router.push('/account-gate');
+          return;
+        }
+
         console.log('🔍 Starting sake label scan with OpenAI...');
         const result = await scanSakeLabel(base64Image);
 
@@ -373,6 +494,7 @@ export default function CameraScreen() {
             params: {
               errorMessage: result.error || 'Could not identify this sake label.',
               imageUri: imageUri || '',
+              ...(result.sake ? { sakeData: JSON.stringify(result.sake) } : {}),
               ...(result.candidates?.length
                 ? { candidates: JSON.stringify(result.candidates) }
                 : {}),
@@ -385,13 +507,14 @@ export default function CameraScreen() {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setErrorMessage('Something went wrong. Check your internet connection and try again.');
     } finally {
+      scanningInFlightRef.current = false;
       setIsScanning(false);
       setCapturedImageUri(null);
     }
   };
 
   const handleCapture = async () => {
-    if (isScanning) return;
+    if (scanningInFlightRef.current || isScanning) return;
 
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
@@ -410,12 +533,13 @@ export default function CameraScreen() {
       console.error('Capture error:', error);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setErrorMessage('Failed to capture photo. Please try again.');
+      scanningInFlightRef.current = false;
       setIsScanning(false);
     }
   };
 
   const handlePickImage = async () => {
-    if (isScanning) return;
+    if (scanningInFlightRef.current || isScanning) return;
 
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
@@ -470,7 +594,7 @@ export default function CameraScreen() {
   };
 
   const selectScanMode = async (next: ScanMode) => {
-    if (isScanning || next === scanMode) return;
+    if (isScanning || next === scanMode || isCorrection) return;
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     if (next === 'menu') {
@@ -491,7 +615,7 @@ export default function CameraScreen() {
     setScanMode('label');
   };
 
-  const stageText = getScanStage(scanProgress, scanMode);
+  const stageText = getScanStage(scanProgress, scanMode, isCorrection);
 
   return (
     <View style={styles.container}>
@@ -534,9 +658,11 @@ export default function CameraScreen() {
           >
             {isScanning
               ? 'Scanning...'
-              : scanMode === 'menu'
-                ? t('camera.scanMenu')
-                : t('camera.scanLabel')}
+              : isCorrection
+                ? 'Back label'
+                : scanMode === 'menu'
+                  ? t('camera.scanMenu')
+                  : t('camera.scanLabel')}
           </Text>
           <Pressable
             style={styles.headerButton}
@@ -551,8 +677,8 @@ export default function CameraScreen() {
           </Pressable>
         </BlurView>
 
-        {/* Mode toggle — label vs menu */}
-        {!isScanning && (
+        {/* Mode toggle — label vs menu (hidden during correction) */}
+        {!isScanning && !isCorrection && (
           <View style={styles.modeToggleRow}>
             <Pressable
               onPress={() => selectScanMode('label')}
@@ -603,6 +729,17 @@ export default function CameraScreen() {
           </View>
         )}
 
+        {isCorrection && !isScanning ? (
+          <View style={styles.modeToggleRow}>
+            <View style={[styles.modeToggleButton, styles.modeToggleActive]}>
+              <ScanLine size={16} color="#C9A227" />
+              <Text style={[styles.modeToggleText, styles.modeToggleTextActive]}>
+                Correction
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
         {/* Scanning Frame */}
         <View style={styles.frameContainer}>
           <Animated.View style={[styles.frame, frameStyle]}>
@@ -646,7 +783,11 @@ export default function CameraScreen() {
             style={[styles.analyzingPanel, { paddingBottom: insets.bottom + 32 }]}
           >
             <Text style={styles.analyzingTitle}>
-              {scanMode === 'menu' ? t('camera.readingMenu') : t('camera.analyzing')}
+              {isCorrection
+                ? 'Re-identifying...'
+                : scanMode === 'menu'
+                  ? t('camera.readingMenu')
+                  : t('camera.analyzing')}
             </Text>
             <Text style={styles.analyzingStage}>{stageText}</Text>
 
@@ -661,9 +802,11 @@ export default function CameraScreen() {
           <>
             <View style={styles.instructionsContainer}>
               <Text style={styles.instructionText}>
-                {scanMode === 'menu'
-                  ? t('camera.pointAtMenu')
-                  : t('camera.pointAtLabel')}
+                {isCorrection
+                  ? 'Point at the back label for more details'
+                  : scanMode === 'menu'
+                    ? t('camera.pointAtMenu')
+                    : t('camera.pointAtLabel')}
               </Text>
               {scanMode === 'menu' && menuPreferences?.preferredFlavors?.length ? (
                 <Text style={styles.prefsHintText}>
@@ -816,7 +959,11 @@ export default function CameraScreen() {
           <View style={styles.infoModalCard}>
             <Text style={styles.infoModalTitle}>{t('camera.infoTitle')}</Text>
             <Text style={styles.infoModalBody}>
-              {scanMode === 'menu' ? t('camera.infoMenu') : t('camera.infoLabel')}
+              {isCorrection
+                ? 'Capture the back label clearly. We combine it with your front photo to find the right bottle — rice, polishing ratio, and brewery details help the most.'
+                : scanMode === 'menu'
+                  ? t('camera.infoMenu')
+                  : t('camera.infoLabel')}
             </Text>
             <Pressable
               style={styles.infoModalButton}

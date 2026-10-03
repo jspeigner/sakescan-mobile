@@ -1,5 +1,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 
+/**
+ * Sake label Vision extract — OpenAI key stays server-side (OPENAI_API_KEY secret).
+ * Default model: gpt-4o-mini; escalates to gpt-4o when mini fails or (for corrections) returns weak extract.
+ * Optional back_image_base64 + rejected context for wrong-sake → back-label correction.
+ */
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -52,7 +57,53 @@ interface MatchCandidate {
   average_rating: number | null;
   total_ratings: number;
   score: number;
+  has_label_images?: boolean;
 }
+
+interface RejectedBottle {
+  sakeId?: string;
+  name?: string;
+  brewery?: string;
+}
+
+const LABEL_JSON_SCHEMA = {
+  name: 'sake_label',
+  schema: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      name: { type: 'string' },
+      nameJapanese: { type: 'string' },
+      brewery: { type: 'string' },
+      type: { type: 'string' },
+      subtype: { type: 'string' },
+      prefecture: { type: 'string' },
+      region: { type: 'string' },
+      description: { type: 'string' },
+      tastingNotes: { type: 'string' },
+      foodPairings: {
+        type: 'array',
+        items: { type: 'string' },
+      },
+      riceVariety: { type: 'string' },
+      polishingRatio: { type: 'number' },
+      alcoholPercentage: { type: 'number' },
+      flavorProfile: {
+        type: 'array',
+        items: { type: 'string' },
+      },
+      servingTemperature: {
+        type: 'array',
+        items: { type: 'string' },
+      },
+    },
+    required: ['name', 'brewery'],
+  },
+} as const;
+
+type OpenAIChatResult =
+  | { ok: true; content: string; finishReason?: string; model: string }
+  | { ok: false; status: number; message: string; model: string };
 
 function toOptionalString(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
@@ -138,6 +189,7 @@ function getLabelQualityMetrics(extracted: ExtractedLabel): {
   if (extracted.servingTemperature?.length) score += 5;
   if (extracted.polishingRatio) score += 5;
   if (extracted.alcoholPercentage) score += 5;
+  if (extracted.riceVariety) score += 5;
 
   if (!extracted.flavorProfile?.length) reasons.push('No flavor profile detected');
   if (!extracted.tastingNotes) reasons.push('No tasting notes detected');
@@ -217,6 +269,11 @@ function scoreCatalogCandidate(
     brewery: string;
     nameJapanese?: string;
     polishingRatio?: number;
+    riceVariety?: string;
+  },
+  options?: {
+    hasLabelImages?: boolean;
+    rejectedSakeId?: string;
   },
 ): number {
   const n = row.name.toLowerCase();
@@ -249,6 +306,12 @@ function scoreCatalogCandidate(
     else if (delta <= 5) score += 15;
   }
 
+  if (query.riceVariety && row.rice_variety) {
+    const qr = query.riceVariety.toLowerCase();
+    const rr = row.rice_variety.toLowerCase();
+    if (rr === qr || rr.includes(qr) || qr.includes(rr)) score += 20;
+  }
+
   const gNums: string[] = gn.match(/\d+/g) ?? [];
   const nNums: string[] = n.match(/\d+/g) ?? [];
   if (gNums.length > 0 && gNums.some((x) => nNums.includes(x))) score += 25;
@@ -257,6 +320,14 @@ function scoreCatalogCandidate(
   score += Math.min(row.total_ratings ?? 0, 15);
   if (row.image_url) score += 8;
   if (row.average_rating != null && row.average_rating > 0) score += 5;
+
+  // Confirmed front/back label photos → stronger future matches without always relying on Vision
+  if (options?.hasLabelImages) score += 35;
+
+  // User explicitly rejected this bottle — demote hard unless Vision still points here clearly
+  if (options?.rejectedSakeId && row.id === options.rejectedSakeId) {
+    score -= 90;
+  }
 
   return score;
 }
@@ -268,27 +339,158 @@ function rankMatches(
     brewery: string;
     nameJapanese?: string;
     polishingRatio?: number;
+    riceVariety?: string;
+  },
+  options?: {
+    labeledSakeIds?: Set<string>;
+    rejectedSakeId?: string;
   },
 ): MatchCandidate[] {
   return rows
-    .map((row) => ({
-      id: row.id,
-      name: row.name,
-      brewery: row.brewery,
-      name_japanese: row.name_japanese,
-      type: row.type,
-      image_url: row.image_url,
-      polishing_ratio: row.polishing_ratio,
-      average_rating: row.average_rating,
-      total_ratings: row.total_ratings,
-      score: scoreCatalogCandidate(row, query),
-    }))
+    .map((row) => {
+      const hasLabelImages = options?.labeledSakeIds?.has(row.id) ?? false;
+      return {
+        id: row.id,
+        name: row.name,
+        brewery: row.brewery,
+        name_japanese: row.name_japanese,
+        type: row.type,
+        image_url: row.image_url,
+        polishing_ratio: row.polishing_ratio,
+        average_rating: row.average_rating,
+        total_ratings: row.total_ratings,
+        has_label_images: hasLabelImages,
+        score: scoreCatalogCandidate(row, query, {
+          hasLabelImages,
+          rejectedSakeId: options?.rejectedSakeId,
+        }),
+      };
+    })
     .sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
-      const aRich = (a.image_url ? 1 : 0) + (a.total_ratings ?? 0);
-      const bRich = (b.image_url ? 1 : 0) + (b.total_ratings ?? 0);
+      const aRich =
+        (a.image_url ? 1 : 0) + (a.total_ratings ?? 0) + (a.has_label_images ? 5 : 0);
+      const bRich =
+        (b.image_url ? 1 : 0) + (b.total_ratings ?? 0) + (b.has_label_images ? 5 : 0);
       return bRich - aRich;
     });
+}
+
+function buildLabelPrompt(
+  hasBack: boolean,
+  rejected?: RejectedBottle | null,
+): string {
+  const rejectLines: string[] = [];
+  if (rejected?.name || rejected?.brewery || rejected?.sakeId) {
+    rejectLines.push(
+      '',
+      'The user already rejected a previous match. Do NOT return that bottle unless the labels clearly prove it is correct:',
+    );
+    if (rejected.name) rejectLines.push(`- rejected name: ${rejected.name}`);
+    if (rejected.brewery) rejectLines.push(`- rejected brewery: ${rejected.brewery}`);
+    if (rejected.sakeId) rejectLines.push(`- rejected catalog id: ${rejected.sakeId}`);
+  }
+
+  if (hasBack) {
+    return `You are reading sake bottle photos: image 1 is the FRONT label, image 2 is the BACK label.
+
+Use both images together:
+- Prefer brand / product name and Japanese name from the FRONT label
+- Prefer brewery address, rice variety (原料米), polishing ratio / seimaibuai (精米歩合), SMV / nihonshudo, ABV, and product codes from the BACK label
+- Prefer BACK-label specs when front and back conflict on numeric fields
+- Omit fields you cannot determine (do not invent)
+- Keep description concise (1-2 sentences)
+- Return factual output only${rejectLines.join('\n')}`;
+  }
+
+  return `You are reading one sake bottle label photo.
+
+Extract label information from visible text only:
+- Include the primary sake name and brewery when visible
+- Use type values like Junmai, Ginjo, Daiginjo, Honjozo, Nigori, Sparkling, Futsushu, Other
+- Omit fields you cannot determine (do not invent)
+- Keep description concise (1-2 sentences)
+- Return factual output only${rejectLines.join('\n')}`;
+}
+
+async function callLabelVision(
+  apiKey: string,
+  frontBase64: string,
+  backBase64: string | null,
+  rejected: RejectedBottle | null,
+  model: 'gpt-4o-mini' | 'gpt-4o',
+): Promise<OpenAIChatResult> {
+  const content: Array<Record<string, unknown>> = [
+    {
+      type: 'text',
+      text: buildLabelPrompt(Boolean(backBase64), rejected),
+    },
+    {
+      type: 'image_url',
+      image_url: {
+        url: `data:image/jpeg;base64,${frontBase64}`,
+      },
+    },
+  ];
+
+  if (backBase64) {
+    content.push({
+      type: 'image_url',
+      image_url: {
+        url: `data:image/jpeg;base64,${backBase64}`,
+      },
+    });
+  }
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content }],
+      response_format: {
+        type: 'json_schema',
+        json_schema: LABEL_JSON_SCHEMA,
+      },
+      max_tokens: 1200,
+      temperature: 0.2,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`[scan-label] OpenAI ${model} error:`, response.status, errorText.slice(0, 300));
+    let message = `OpenAI API error: ${response.status}`;
+    if (response.status === 401) message = 'OpenAI authentication failed on server.';
+    if (response.status === 429) message = 'Rate limit exceeded. Please try again in a moment.';
+    if (response.status === 402) message = 'OpenAI account has insufficient credits.';
+    return { ok: false, status: response.status, message, model };
+  }
+
+  const data = await response.json();
+  const choice = data.choices?.[0];
+  const aiContent = choice?.message?.content;
+  if (!aiContent || typeof aiContent !== 'string') {
+    return { ok: false, status: 500, message: 'No analysis result from OpenAI', model };
+  }
+  return {
+    ok: true,
+    content: aiContent,
+    finishReason: choice?.finish_reason,
+    model,
+  };
+}
+
+function isWeakExtract(extracted: ExtractedLabel | null): boolean {
+  if (!extracted) return true;
+  const quality = getLabelQualityMetrics(extracted);
+  return (
+    quality.confidenceScore < 55 ||
+    (!extracted.polishingRatio && !extracted.alcoholPercentage && !extracted.riceVariety)
+  );
 }
 
 async function enrichSakeFromName(
@@ -356,13 +558,30 @@ alcoholPercentage (number), polishingRatio (number), nameJapanese.`,
   }
 }
 
+function parseRejected(raw: unknown): RejectedBottle | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  const sakeId = toOptionalString(obj.sakeId ?? obj.sake_id);
+  const name = toKnownOptionalString(obj.name);
+  const brewery = toKnownOptionalString(obj.brewery);
+  if (!sakeId && !name && !brewery) return null;
+  return { sakeId, name, brewery };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    const { image_base64 } = await req.json();
+    const body = await req.json();
+    const image_base64 = body?.image_base64;
+    const back_image_base64 =
+      typeof body?.back_image_base64 === 'string' && body.back_image_base64.length > 0
+        ? body.back_image_base64
+        : null;
+    const rejected = parseRejected(body?.rejected);
+    const usedBackLabel = Boolean(back_image_base64);
 
     if (!image_base64 || typeof image_base64 !== 'string') {
       return new Response(
@@ -391,125 +610,71 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Step 1: Vision — factual label extraction (gpt-4o-mini for cost; enrich still uses mini)
-    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openaiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: `You are reading one sake bottle label photo.
+    // Step 1: Vision — factual label extraction (mini first; escalate like menu scan)
+    let vision = await callLabelVision(
+      openaiApiKey,
+      image_base64,
+      back_image_base64,
+      rejected,
+      'gpt-4o-mini',
+    );
 
-Extract label information from visible text only:
-- Include the primary sake name and brewery when visible
-- Use type values like Junmai, Ginjo, Daiginjo, Honjozo, Nigori, Sparkling, Futsushu, Other
-- Omit fields you cannot determine (do not invent)
-- Keep description concise (1-2 sentences)
-- Return factual output only`,
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: `data:image/jpeg;base64,${image_base64}`,
-                },
-              },
-            ],
-          },
-        ],
-        response_format: {
-          type: 'json_schema',
-          json_schema: {
-            name: 'sake_label',
-            schema: {
-              type: 'object',
-              additionalProperties: false,
-              properties: {
-                name: { type: 'string' },
-                nameJapanese: { type: 'string' },
-                brewery: { type: 'string' },
-                type: { type: 'string' },
-                subtype: { type: 'string' },
-                prefecture: { type: 'string' },
-                region: { type: 'string' },
-                description: { type: 'string' },
-                tastingNotes: { type: 'string' },
-                foodPairings: {
-                  type: 'array',
-                  items: { type: 'string' },
-                },
-                riceVariety: { type: 'string' },
-                polishingRatio: { type: 'number' },
-                alcoholPercentage: { type: 'number' },
-                flavorProfile: {
-                  type: 'array',
-                  items: { type: 'string' },
-                },
-                servingTemperature: {
-                  type: 'array',
-                  items: { type: 'string' },
-                },
-              },
-              required: ['name', 'brewery'],
-            },
-          },
-        },
-        max_tokens: 1200,
-        temperature: 0.2,
-      }),
-    });
+    let extracted: ExtractedLabel | null = null;
+    if (vision.ok && vision.finishReason !== 'length') {
+      try {
+        extracted = normalizeExtracted(JSON.parse(vision.content.trim()) as Record<string, unknown>);
+      } catch {
+        extracted = null;
+      }
+    }
 
-    if (!openaiResponse.ok) {
-      const error = await openaiResponse.text();
-      console.error('OpenAI Vision error:', error.slice(0, 300));
-      const status = openaiResponse.status;
-      let message = 'Failed to analyze image with OpenAI';
-      if (status === 429) message = 'Rate limit exceeded. Please try again in a moment.';
-      if (status === 401) message = 'OpenAI authentication failed on server.';
+    const shouldEscalate =
+      !vision.ok ||
+      vision.finishReason === 'length' ||
+      !extracted ||
+      (usedBackLabel && isWeakExtract(extracted));
+
+    if (shouldEscalate) {
+      console.log(
+        `[scan-label] escalating to gpt-4o (mini ok=${vision.ok} usedBack=${usedBackLabel} weak=${isWeakExtract(extracted)})`,
+      );
+      const fallback = await callLabelVision(
+        openaiApiKey,
+        image_base64,
+        back_image_base64,
+        rejected,
+        'gpt-4o',
+      );
+      if (fallback.ok) {
+        vision = fallback;
+        try {
+          extracted = normalizeExtracted(
+            JSON.parse(fallback.content.trim()) as Record<string, unknown>,
+          );
+        } catch {
+          extracted = null;
+        }
+      } else if (!vision.ok) {
+        return new Response(
+          JSON.stringify({ success: false, message: fallback.message }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+    }
+
+    if (!vision.ok && !extracted) {
       return new Response(
-        JSON.stringify({ success: false, message }),
+        JSON.stringify({ success: false, message: vision.message }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
 
-    const openaiData = await openaiResponse.json();
-    const choice = openaiData.choices?.[0];
-    const aiContent = choice?.message?.content;
-
-    if (!aiContent) {
-      return new Response(
-        JSON.stringify({ success: false, message: 'No analysis result from OpenAI' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      );
-    }
-
-    if (choice?.finish_reason === 'length') {
+    if (vision.ok && vision.finishReason === 'length' && !extracted) {
       return new Response(
         JSON.stringify({
           success: false,
           message:
             'This label photo has too much text to parse in one pass. Move closer and focus on the bottle label.',
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      );
-    }
-
-    let extracted: ExtractedLabel | null = null;
-    try {
-      const parsed = JSON.parse(aiContent.trim()) as Record<string, unknown>;
-      extracted = normalizeExtracted(parsed);
-    } catch {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          message: 'Failed to parse AI analysis. The image might not be a sake label.',
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
@@ -525,7 +690,28 @@ Extract label information from visible text only:
       );
     }
 
-    // Step 2: Catalog entity resolution (name + brewery + Japanese + polishing)
+    // Cheap path: prior confirmed correction for this rejected bottle → reuse corrected sake_id
+    let priorCorrectedId: string | null = null;
+    if (rejected?.sakeId || rejected?.name) {
+      let feedbackQuery = supabase
+        .from('scan_feedback')
+        .select('corrected_sake_id')
+        .eq('kind', 'wrong')
+        .not('corrected_sake_id', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (rejected.sakeId) {
+        feedbackQuery = feedbackQuery.eq('sake_id', rejected.sakeId);
+      } else if (rejected.name) {
+        feedbackQuery = feedbackQuery.ilike('name', rejected.name);
+      }
+
+      const { data: priorRows } = await feedbackQuery;
+      priorCorrectedId = priorRows?.[0]?.corrected_sake_id ?? null;
+    }
+
+    // Step 2: Catalog entity resolution (name + brewery + Japanese + polishing + rice)
     const safeName = escapeIlike(extracted.name);
     const token = escapeIlike(extracted.name.split(/\s+/)[0] ?? extracted.name);
     const safeJp = escapeIlike(extracted.nameJapanese ?? '');
@@ -547,12 +733,68 @@ Extract label information from visible text only:
       console.error('Catalog search error:', searchError.message);
     }
 
-    const ranked = rankMatches((matchRows as SakeRow[]) ?? [], {
-      name: extracted.name,
-      brewery: extracted.brewery,
-      nameJapanese: extracted.nameJapanese,
-      polishingRatio: extracted.polishingRatio,
-    });
+    const rows = (matchRows as SakeRow[]) ?? [];
+    const rowIds = rows.map((r) => r.id);
+
+    // Prefer catalog rows that already have confirmed label images
+    const labeledSakeIds = new Set<string>();
+    if (rowIds.length > 0) {
+      const { data: labelRows } = await supabase
+        .from('sake_label_images')
+        .select('sake_id')
+        .in('sake_id', rowIds);
+      for (const row of labelRows ?? []) {
+        if (row?.sake_id) labeledSakeIds.add(row.sake_id as string);
+      }
+    }
+
+    const ranked = rankMatches(
+      rows,
+      {
+        name: extracted.name,
+        brewery: extracted.brewery,
+        nameJapanese: extracted.nameJapanese,
+        polishingRatio: extracted.polishingRatio,
+        riceVariety: extracted.riceVariety,
+      },
+      {
+        labeledSakeIds,
+        rejectedSakeId: rejected?.sakeId,
+      },
+    );
+
+    // If a prior correction exists and still ranks reasonably, prefer it
+    if (priorCorrectedId) {
+      const priorIdx = ranked.findIndex((c) => c.id === priorCorrectedId);
+      if (priorIdx >= 0 && ranked[priorIdx].score >= 40) {
+        ranked[priorIdx].score += 50;
+        ranked.sort((a, b) => b.score - a.score);
+      } else if (priorIdx < 0) {
+        // Pull the prior corrected sake into candidates even if name search missed it
+        const { data: priorSake } = await supabase
+          .from('sake')
+          .select('*')
+          .eq('id', priorCorrectedId)
+          .maybeSingle();
+        if (priorSake) {
+          const priorRow = priorSake as SakeRow;
+          ranked.unshift({
+            id: priorRow.id,
+            name: priorRow.name,
+            brewery: priorRow.brewery,
+            name_japanese: priorRow.name_japanese,
+            type: priorRow.type,
+            image_url: priorRow.image_url,
+            polishing_ratio: priorRow.polishing_ratio,
+            average_rating: priorRow.average_rating,
+            total_ratings: priorRow.total_ratings,
+            has_label_images: true,
+            score: 120,
+          });
+          rows.push(priorRow);
+        }
+      }
+    }
 
     const MATCH_THRESHOLD = 55;
     const CLOSE_SCORE_GAP = 18;
@@ -568,7 +810,17 @@ Extract label information from visible text only:
 
     let matchedSake: SakeRow | null = null;
     if (top) {
-      matchedSake = ((matchRows as SakeRow[]) ?? []).find((r) => r.id === top.id) ?? null;
+      matchedSake = rows.find((r) => r.id === top.id) ?? null;
+    }
+
+    // Never auto-match the rejected bottle on a correction pass
+    if (
+      usedBackLabel &&
+      rejected?.sakeId &&
+      matchedSake?.id === rejected.sakeId &&
+      (top?.score ?? 0) < 140
+    ) {
+      matchedSake = null;
     }
 
     // Step 3: Enrichment when narrative fields are thin
@@ -595,6 +847,8 @@ Extract label information from visible text only:
         scanQualityHint: quality.scanQualityHint,
         qualityReasons: quality.qualityReasons,
         ambiguous,
+        used_back_label: usedBackLabel,
+        model: vision.ok ? vision.model : 'gpt-4o',
         message: matchedSake
           ? ambiguous
             ? 'Close catalog matches found — confirm the correct bottle'

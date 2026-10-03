@@ -134,26 +134,56 @@ export function useSakeByRegion(region: string | null) {
 /** Page size for Breweries tab — must match sensible default in `list_breweries_catalog`. */
 export const BREWERIES_CATALOG_PAGE_SIZE = 30;
 
+/** Placeholder brewery labels that should not appear in the Breweries catalog. */
+const UNKNOWN_BREWERY_LABELS = new Set([
+  'unknown',
+  'unknown brewery',
+  'n/a',
+  'na',
+  'none',
+  'not specified',
+  'unspecified',
+  'not listed',
+  'not available',
+]);
+
+export function isKnownBreweryName(name: string | null | undefined): boolean {
+  const trimmed = name?.trim() ?? '';
+  if (!trimmed) return false;
+  return !UNKNOWN_BREWERY_LABELS.has(trimmed.toLowerCase());
+}
+
+type BreweriesCatalogPage = {
+  rows: BreweryCatalogRow[];
+  /** Raw RPC row count before client Unknown-filter (drives pagination). */
+  rawCount: number;
+};
+
 /**
  * Paginated breweries aggregated from the full `sake` table (Supabase RPC).
- * Ordered by sake count descending; uses keyset-stable sort for consistent paging.
+ * Ordered by sake count descending. Omits Unknown/empty brewery placeholders
+ * (client filter until/alongside RPC migration).
  */
 export function useBreweriesCatalog() {
   return useInfiniteQuery({
-    queryKey: ['breweries', 'catalog', BREWERIES_CATALOG_PAGE_SIZE],
+    queryKey: ['breweries', 'catalog', BREWERIES_CATALOG_PAGE_SIZE, 'exclude-unknown'],
     initialPageParam: 0,
-    queryFn: async ({ pageParam }) => {
+    queryFn: async ({ pageParam }): Promise<BreweriesCatalogPage> => {
       const offset = pageParam as number;
       const { data, error } = await supabase.rpc('list_breweries_catalog', {
         p_limit: BREWERIES_CATALOG_PAGE_SIZE,
         p_offset: offset,
       });
       if (error) throw error;
-      return (data ?? []) as BreweryCatalogRow[];
+      const raw = (data ?? []) as BreweryCatalogRow[];
+      return {
+        rows: raw.filter((row) => isKnownBreweryName(row.name)),
+        rawCount: raw.length,
+      };
     },
     getNextPageParam: (lastPage, allPages) => {
-      if (lastPage.length < BREWERIES_CATALOG_PAGE_SIZE) return undefined;
-      return allPages.reduce((sum, page) => sum + page.length, 0);
+      if (lastPage.rawCount < BREWERIES_CATALOG_PAGE_SIZE) return undefined;
+      return allPages.reduce((sum, page) => sum + page.rawCount, 0);
     },
   });
 }
@@ -385,8 +415,12 @@ export function useScanLabel() {
 }
 
 /** Upload a local file URI to the sake-images bucket. Returns the storage path on success. */
-async function uploadLabelImage(localUri: string, sakeId: string): Promise<string | null> {
-  const path = `labels/${sakeId}-${Date.now()}.jpg`;
+async function uploadLabelImage(
+  localUri: string,
+  sakeId: string,
+  side: 'front' | 'back' | 'label' = 'label',
+): Promise<string | null> {
+  const path = `labels/${sakeId}-${side}-${Date.now()}.jpg`;
   const base64 = await FileSystem.readAsStringAsync(localUri, {
     encoding: FileSystem.EncodingType.Base64,
   });
@@ -399,6 +433,76 @@ async function uploadLabelImage(localUri: string, sakeId: string): Promise<strin
     return null;
   }
   return path;
+}
+
+/** Persist confirmed front/back label photos onto a catalog sake for stronger future matches. */
+export async function persistSakeLabelImages(params: {
+  sakeId: string;
+  userId: string;
+  frontImageUri?: string;
+  backImageUri?: string;
+  scanId?: string;
+}): Promise<{ frontPath?: string; backPath?: string }> {
+  const result: { frontPath?: string; backPath?: string } = {};
+  const rows: Array<{
+    sake_id: string;
+    side: 'front' | 'back';
+    storage_path: string;
+    source_scan_id: string | null;
+    created_by: string;
+  }> = [];
+
+  if (params.frontImageUri) {
+    const path = await uploadLabelImage(params.frontImageUri, params.sakeId, 'front');
+    if (path) {
+      result.frontPath = path;
+      rows.push({
+        sake_id: params.sakeId,
+        side: 'front',
+        storage_path: path,
+        source_scan_id: params.scanId ?? null,
+        created_by: params.userId,
+      });
+    }
+  }
+
+  if (params.backImageUri) {
+    const path = await uploadLabelImage(params.backImageUri, params.sakeId, 'back');
+    if (path) {
+      result.backPath = path;
+      rows.push({
+        sake_id: params.sakeId,
+        side: 'back',
+        storage_path: path,
+        source_scan_id: params.scanId ?? null,
+        created_by: params.userId,
+      });
+    }
+  }
+
+  if (rows.length === 0) return result;
+
+  const { error } = await supabase.from('sake_label_images').insert(rows as Record<string, unknown>[]);
+  if (error) {
+    console.warn('Failed to insert sake_label_images:', error.message);
+  }
+
+  // Keep sake.image_url populated from front when missing
+  if (result.frontPath) {
+    const { data: existing } = await supabase
+      .from('sake')
+      .select('image_url')
+      .eq('id', params.sakeId)
+      .maybeSingle();
+    if (!existing?.image_url) {
+      await supabase
+        .from('sake')
+        .update({ image_url: result.frontPath } as Record<string, unknown>)
+        .eq('id', params.sakeId);
+    }
+  }
+
+  return result;
 }
 
 export function useCreateSake() {
@@ -425,19 +529,31 @@ export function useCreateSake() {
       // Label photo captured during scan
       imageUrl?: string;
     }) => {
-      // Check if sake already exists (fuzzy — catalog names often differ slightly from scan text)
+      // Check if sake already exists (fuzzy — require a name match; never brewery-only)
       const { data: existingRows } = await supabase
         .from('sake')
         .select('id, image_url, name, brewery')
         .or(`name.ilike.%${params.name}%,brewery.ilike.%${params.brewery}%`)
         .limit(8);
 
+      const queryName = params.name.toLowerCase().trim();
+      const queryBrewery = params.brewery.toLowerCase().trim();
+      const nameMatches = (row: { name?: string | null }) => {
+        const n = row.name?.toLowerCase().trim() ?? '';
+        if (!n || !queryName) return false;
+        return n === queryName || n.includes(queryName) || queryName.includes(n);
+      };
+      const breweryMatches = (row: { brewery?: string | null }) => {
+        const b = row.brewery?.toLowerCase().trim() ?? '';
+        if (!b || !queryBrewery) return false;
+        return b === queryBrewery || b.includes(queryBrewery) || queryBrewery.includes(b);
+      };
+
+      // Prefer name+brewery; fall back to name-only. Never pick a brewery-only row.
       const existing =
-        existingRows?.find(
-          (row) =>
-            row.name?.toLowerCase().includes(params.name.toLowerCase()) ||
-            params.name.toLowerCase().includes(row.name?.toLowerCase() ?? ''),
-        ) ?? existingRows?.[0];
+        existingRows?.find((row) => nameMatches(row) && breweryMatches(row)) ??
+        existingRows?.find((row) => nameMatches(row)) ??
+        null;
 
       const structuredFields = {
         flavor_tags: params.flavorProfile?.filter(Boolean) ?? [],
@@ -526,6 +642,7 @@ export function useCreateScan() {
       userId: string;
       sakeId: string;
       imageUrl?: string;
+      backImageUrl?: string;
       ocrRawText?: string;
     }) => {
       const { data, error } = await supabase
@@ -534,6 +651,7 @@ export function useCreateScan() {
           user_id: params.userId,
           sake_id: params.sakeId,
           scanned_image_url: params.imageUrl ?? null,
+          back_image_url: params.backImageUrl ?? null,
           ocr_raw_text: params.ocrRawText ?? null,
           matched: true,
         } as Record<string, unknown>)
@@ -553,6 +671,42 @@ export function useCreateScan() {
           scanId: (data as { id?: string })?.id,
         }),
       );
+    },
+  });
+}
+
+/** Update an existing scan after a back-label correction (new sake_id / back image). */
+export function useUpdateScan() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (params: {
+      scanId: string;
+      sakeId?: string;
+      imageUrl?: string;
+      backImageUrl?: string;
+      ocrRawText?: string;
+      matched?: boolean;
+    }) => {
+      const patch: Record<string, unknown> = {};
+      if (params.sakeId !== undefined) patch.sake_id = params.sakeId;
+      if (params.imageUrl !== undefined) patch.scanned_image_url = params.imageUrl;
+      if (params.backImageUrl !== undefined) patch.back_image_url = params.backImageUrl;
+      if (params.ocrRawText !== undefined) patch.ocr_raw_text = params.ocrRawText;
+      if (params.matched !== undefined) patch.matched = params.matched;
+
+      const { data, error } = await supabase
+        .from('scans')
+        .update(patch)
+        .eq('id', params.scanId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scans'] });
     },
   });
 }
