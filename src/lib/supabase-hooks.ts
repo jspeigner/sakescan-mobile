@@ -2,6 +2,12 @@ import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tansta
 import * as FileSystem from 'expo-file-system';
 import { decode } from 'base64-arraybuffer';
 import { supabase } from './supabase';
+import {
+  brewerySakeNamePattern,
+  isPlaceholderBreweryName,
+  sakeBreweryMatchesCatalogName,
+  stripBreweryCorporateSuffix,
+} from './brewery-name';
 import type {
   Sake,
   Rating,
@@ -73,23 +79,33 @@ export function useSearchSake(query: string) {
   });
 }
 
-/** Exact brewery match (case-insensitive) for brewery detail pages. */
+/**
+ * Sake lineup for a brewery detail page.
+ * Prefix `ilike` finds corporate-suffix variants ("Akita Meijyo Co.,Ltd");
+ * client-side equality after suffix strip rejects sibling houses ("Ito" ≠ "Ito Shuzo").
+ * Skips placeholder brewery labels ("Unknown"). Mirrors Sakescan fetchSakesForBreweryName.
+ */
 export function useSakeByBrewery(breweryName: string | undefined) {
   return useQuery({
     queryKey: ['sake', 'brewery', breweryName],
     queryFn: async () => {
-      if (!breweryName?.trim()) return [];
+      if (!breweryName?.trim() || isPlaceholderBreweryName(breweryName)) return [];
 
+      const breweryKey = stripBreweryCorporateSuffix(breweryName);
+      const fetchLimit = 1000;
       const { data, error } = await supabase
         .from('sake')
         .select('*')
-        .ilike('brewery', breweryName.trim())
-        .order('average_rating', { ascending: false, nullsFirst: false });
+        .ilike('brewery', brewerySakeNamePattern(breweryKey))
+        .order('average_rating', { ascending: false, nullsFirst: false })
+        .limit(fetchLimit);
 
       if (error) throw error;
-      return data as Sake[];
+      return ((data ?? []) as Sake[]).filter((row) =>
+        sakeBreweryMatchesCatalogName(row.brewery, breweryKey),
+      );
     },
-    enabled: !!breweryName?.trim(),
+    enabled: !!breweryName?.trim() && !isPlaceholderBreweryName(breweryName),
   });
 }
 

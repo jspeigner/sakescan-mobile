@@ -69,10 +69,14 @@ export default function SearchResultsScreen() {
       if (!matchesType) return false;
     }
 
-    // Region filter
+    // Region filter — match region OR prefecture (many rows store place only in prefecture).
     if (selectedRegions.length > 0) {
-      const sakeRegion = (sake.region ?? sake.prefecture ?? '').toLowerCase();
-      const matchesRegion = selectedRegions.some(r => sakeRegion.includes(r.toLowerCase()));
+      const region = (sake.region ?? '').toLowerCase();
+      const prefecture = (sake.prefecture ?? '').toLowerCase();
+      const matchesRegion = selectedRegions.some((r) => {
+        const needle = r.toLowerCase();
+        return region.includes(needle) || prefecture.includes(needle);
+      });
       if (!matchesRegion) return false;
     }
 

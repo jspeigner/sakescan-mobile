@@ -505,7 +505,7 @@ export default function ScanResultScreen({
           )}
 
           <View className="flex-row mb-6">
-            {sakeInfo.alcoholPercentage ? (
+            {sakeInfo.alcoholPercentage !== null && sakeInfo.alcoholPercentage !== undefined ? (
               <View className="flex-1 mr-3">
                 <Text className="text-[#9CA3AF] text-xs font-medium mb-2 uppercase tracking-wide">
                   ABV

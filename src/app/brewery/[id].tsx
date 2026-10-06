@@ -5,6 +5,7 @@ import { ChevronLeft, Share2, Star, Building2 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useSakeByBrewery } from '@/lib/supabase-hooks';
+import { isPlaceholderBreweryName } from '@/lib/brewery-name';
 import { resolveSakeImageUrl } from '@/lib/supabase';
 import { useTheme } from '@/lib/theme-context';
 
@@ -15,9 +16,12 @@ export default function BreweryScreen() {
 
   // Decode brewery name from URL parameter
   const breweryName = id ? decodeURIComponent(id) : '';
+  const isPlaceholder = isPlaceholderBreweryName(breweryName);
 
-  // Exact brewery match (case-insensitive) — avoids search false negatives
-  const { data: brewerySakes, isLoading } = useSakeByBrewery(breweryName);
+  // Corporate-suffix tolerant lineup (skips Unknown / N/A placeholders)
+  const { data: brewerySakes, isLoading } = useSakeByBrewery(
+    isPlaceholder ? undefined : breweryName,
+  );
 
   const handleSakePress = async (sakeId: string) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -44,13 +48,10 @@ export default function BreweryScreen() {
     );
   }
 
-  // Normalize for residual mismatches (whitespace / case)
-  const normalize = (value: string) => value.trim().toLowerCase();
-  const filteredSakes = (brewerySakes ?? []).filter(
-    (s) => normalize(s.brewery ?? '') === normalize(breweryName),
-  );
+  // Hook already applies corporate-suffix equality; keep residual whitespace/case filter.
+  const filteredSakes = isPlaceholder ? [] : (brewerySakes ?? []);
 
-  if (filteredSakes.length === 0) {
+  if (isPlaceholder || filteredSakes.length === 0) {
     return (
       <View className="flex-1" style={{ backgroundColor: colors.background }}>
         <View
