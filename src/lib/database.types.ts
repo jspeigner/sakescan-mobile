@@ -534,6 +534,30 @@ export interface Database {
         Args: Record<string, never>;
         Returns: undefined;
       };
+      /** Live-catalog gated: only rows whose embedding image_url still matches sake.image_url. */
+      match_sake_by_image_sha256: {
+        Args: { p_sha256: string };
+        Returns: {
+          sake_id: string;
+          image_url: string;
+          label_text: string | null;
+          similarity: number;
+        }[];
+      };
+      /** Live-catalog gated embedding KNN (Sakescan #73). */
+      match_sake_embeddings: {
+        Args: {
+          query_embedding: number[];
+          match_count?: number;
+          match_threshold?: number;
+        };
+        Returns: {
+          sake_id: string;
+          image_url: string;
+          label_text: string | null;
+          similarity: number;
+        }[];
+      };
     };
   };
 }

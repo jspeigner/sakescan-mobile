@@ -47,6 +47,7 @@ import { getUserLocation } from '@/lib/location';
 import { buildSakeShareMessage } from '@/lib/share-sake';
 import { resolveSakeTastingFields } from '@/lib/sake-catalog';
 import { findTypeExplainer } from '@/lib/sake-learn';
+import { isPlaceholderBreweryName } from '@/lib/brewery-name';
 import type { RatingWithUser } from '@/lib/database.types';
 
 type ServingTemp = 'Chilled' | 'Room' | 'Warm';
@@ -173,8 +174,15 @@ export default function SakeDetailScreen() {
     avgRating: supabaseSake.average_rating ?? 0,
     reviewCount: supabaseSake.total_ratings ?? 0,
     labelImageUrl: resolveSakeImageUrl(supabaseSake.image_url) ?? null,
-    alcoholContent: supabaseSake.alcohol_percentage ? `${supabaseSake.alcohol_percentage}%` : 'N/A',
-    riceMilling: supabaseSake.polishing_ratio ? `${supabaseSake.polishing_ratio}%` : undefined,
+    // Show 0% ABV when present (truthy check hid valid zeros — Sakescan #32).
+    alcoholContent:
+      supabaseSake.alcohol_percentage !== null && supabaseSake.alcohol_percentage !== undefined
+        ? `${supabaseSake.alcohol_percentage}%`
+        : 'N/A',
+    riceMilling:
+      supabaseSake.polishing_ratio !== null && supabaseSake.polishing_ratio !== undefined
+        ? `${supabaseSake.polishing_ratio}%`
+        : undefined,
     riceType: supabaseSake.rice_variety ?? 'N/A',
     smv: supabaseSake.smv,
     acidity: supabaseSake.acidity,
@@ -189,6 +197,7 @@ export default function SakeDetailScreen() {
     region: supabaseSake.region ?? supabaseSake.prefecture ?? '',
     country: 'Japan',
   };
+  const canOpenBrewery = !isPlaceholderBreweryName(supabaseSake.brewery);
 
   const handleFavorite = async () => {
     if (isGuest || !user?.id || !id) {
@@ -372,9 +381,27 @@ export default function SakeDetailScreen() {
           )}
 
           {/* Brewery Info */}
-          <Text className="text-base mb-1" style={{ color: colors.textSecondary }}>
-            {brewery.name} • {brewery.region ? `${brewery.region}, ${brewery.country}` : brewery.country}
-          </Text>
+          {canOpenBrewery ? (
+            <Pressable
+              onPress={async () => {
+                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push(`/brewery/${encodeURIComponent(brewery.name)}`);
+              }}
+              className="mb-1"
+            >
+              <Text className="text-base" style={{ color: colors.primary }}>
+                {brewery.name}
+                <Text style={{ color: colors.textSecondary }}>
+                  {' '}
+                  • {brewery.region ? `${brewery.region}, ${brewery.country}` : brewery.country}
+                </Text>
+              </Text>
+            </Pressable>
+          ) : (
+            <Text className="text-base mb-1" style={{ color: colors.textSecondary }}>
+              {brewery.name} • {brewery.region ? `${brewery.region}, ${brewery.country}` : brewery.country}
+            </Text>
+          )}
 
           {/* Type badge row */}
           <View className="flex-row items-center gap-2 mb-4">
